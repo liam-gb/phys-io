@@ -1,0 +1,17 @@
+{
+  "name": "physio-report-generator",
+  "version": "1.0.0",
+  "description": "A desktop application for generating physio reports from clinical notes using local LLMs through Ollama.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}
