@@ -26,5 +26,13 @@ contextBridge.exposeInMainWorld('api', {
   files: {
     saveReport: (reportText, filename) => ipcRenderer.invoke('save-report', reportText, filename),
     loadNotes: () => ipcRenderer.invoke('load-notes')
+  },
+  
+  // Session management
+  sessions: {
+    save: (sessionData) => ipcRenderer.invoke('save-session', sessionData),
+    loadList: () => ipcRenderer.invoke('load-sessions-list'),
+    load: (sessionId) => ipcRenderer.invoke('load-session', sessionId),
+    delete: (sessionId) => ipcRenderer.invoke('delete-session', sessionId)
   }
 });

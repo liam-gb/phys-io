@@ -1,9 +1,18 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const ollamaClient = require('./src/ollama');
 
 let mainWindow;
+const sessionsDirectory = path.join(app.getPath('userData'), 'sessions');
+
+// Ensure sessions directory exists
+function ensureSessionsDirectory() {
+  if (!fs.existsSync(sessionsDirectory)) {
+    fs.mkdirSync(sessionsDirectory, { recursive: true });
+  }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -26,6 +35,7 @@ function createWindow() {
 
 // Initialize the app
 app.whenReady().then(async () => {
+  ensureSessionsDirectory();
   createWindow();
 });
 
@@ -99,6 +109,114 @@ ipcMain.handle('get-ollama-models', async () => {
 ipcMain.handle('set-ollama-model', async (event, model) => {
   ollamaClient.setModel(model);
   return true;
+});
+
+// Helper to generate a unique ID
+function generateUniqueId() {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+// New handlers for session management
+ipcMain.handle('save-session', async (event, sessionData) => {
+  try {
+    ensureSessionsDirectory();
+    
+    // If no ID exists, create one
+    if (!sessionData.id) {
+      sessionData.id = generateUniqueId();
+    }
+    
+    const filePath = path.join(sessionsDirectory, `${sessionData.id}.json`);
+    
+    // Add timestamp if not provided
+    if (!sessionData.savedAt) {
+      sessionData.savedAt = new Date().toISOString();
+    }
+    
+    fs.writeFileSync(filePath, JSON.stringify(sessionData, null, 2), 'utf8');
+    return { success: true, id: sessionData.id };
+  } catch (error) {
+    console.error('Failed to save session:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('load-sessions-list', async () => {
+  try {
+    ensureSessionsDirectory();
+    
+    const files = fs.readdirSync(sessionsDirectory)
+      .filter(file => file.endsWith('.json'));
+    
+    const sessions = files.map(file => {
+      try {
+        const filePath = path.join(sessionsDirectory, file);
+        const rawData = fs.readFileSync(filePath, 'utf8');
+        const sessionData = JSON.parse(rawData);
+        const id = path.basename(file, '.json');
+        
+        return {
+          id,
+          title: sessionData.title,
+          patientName: sessionData.patientName,
+          savedAt: sessionData.savedAt,
+          messageCount: sessionData.messages?.length || 0
+        };
+      } catch (err) {
+        console.error(`Error reading session file ${file}:`, err);
+        return null;
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => {
+      // Sort by saved date (newest first)
+      if (a.savedAt && b.savedAt) {
+        return new Date(b.savedAt) - new Date(a.savedAt);
+      }
+      return 0;
+    });
+    
+    return sessions;
+  } catch (error) {
+    console.error('Failed to load sessions list:', error);
+    return [];
+  }
+});
+
+ipcMain.handle('load-session', async (event, sessionId) => {
+  try {
+    const filePath = path.join(sessionsDirectory, `${sessionId}.json`);
+    
+    if (!fs.existsSync(filePath)) {
+      return null;
+    }
+    
+    const rawData = fs.readFileSync(filePath, 'utf8');
+    const sessionData = JSON.parse(rawData);
+    
+    // Ensure the ID matches the filename
+    sessionData.id = sessionId;
+    
+    return sessionData;
+  } catch (error) {
+    console.error('Failed to load session:', error);
+    return null;
+  }
+});
+
+ipcMain.handle('delete-session', async (event, sessionId) => {
+  try {
+    const filePath = path.join(sessionsDirectory, `${sessionId}.json`);
+    
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Failed to delete session:', error);
+    return false;
+  }
 });
 
 ipcMain.handle('save-report', async (event, reportText, suggestedName) => {

@@ -4,70 +4,90 @@
   <meta charset="UTF-8">
   <title>Physiotherapy Report Generator</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1>Physiotherapy Report Generator</h1>
-      <div class="status-bar">
-        <div class="status-indicator">
-          <span id="status-dot"></span>
-          <span id="status-text">Checking Ollama...</span>
-        </div>
-        <div class="model-selector">
-          <label for="model-select">Model:</label>
-          <select id="model-select" disabled>
-            <option value="">Loading models...</option>
-          </select>
-        </div>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <div id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <h3>Saved Sessions</h3>
+        <button id="new-session-btn" class="icon-button" title="New Session">
+          <i class="fa-solid fa-plus"></i>
+        </button>
       </div>
-    </header>
-
-    <main>
-      <div class="workspace">
-        <div class="input-panel">
-          <div class="panel-header">
-            <h2>Clinical Notes</h2>
-            <button id="load-notes-btn" class="small-button">Load from file</button>
-          </div>
-          <textarea id="notes-input" placeholder="Enter clinical notes here..."></textarea>
-          <div class="action-buttons">
-            <button id="generate-btn" class="primary-button" disabled>Generate Report</button>
-            <button id="clear-notes-btn" class="secondary-button">Clear</button>
-          </div>
-        </div>
-
-        <div class="output-panel">
-          <div class="panel-header">
-            <h2>Generated Report</h2>
-          </div>
-          <div id="report-output" class="report-container"></div>
-          <div class="action-buttons">
-            <button id="copy-btn" class="secondary-button" disabled>Copy to Clipboard</button>
-            <button id="save-btn" class="secondary-button" disabled>Save Report</button>
-          </div>
-        </div>
+      <div id="sessions-list" class="sessions-list">
+        <!-- Sessions will be populated here -->
+        <div class="empty-state">No saved sessions</div>
       </div>
-    </main>
+    </div>
 
-    <footer>
-      <p>Built with Electron <span id="electron-version"></span> | Node <span id="node-version"></span></p>
-      <p class="privacy-notice">⚠️ For patient privacy, this application works offline</p>
-    </footer>
+    <!-- Main Content -->
+    <div class="main-content">
+      <header>
+        <div class="header-left">
+          <button id="toggle-sidebar-btn" class="icon-button" title="Toggle Sidebar">
+            <i class="fa-solid fa-bars"></i>
+          </button>
+          <h1>Physio Report Generator</h1>
+        </div>
+        <div class="status-bar">
+          <div class="status-indicator">
+            <span id="status-dot"></span>
+            <span id="status-text">Checking Ollama...</span>
+          </div>
+          <div class="model-selector">
+            <label for="model-select">Model:</label>
+            <select id="model-select" disabled>
+              <option value="">Loading models...</option>
+            </select>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <div class="chat-container">
+          <div id="conversation-history" class="conversation-history">
+            <!-- Initial welcome message -->
+            <div class="message system-message">
+              <div class="message-content">Enter clinical notes to generate a report</div>
+            </div>
+          </div>
+          
+          <div class="input-container">
+            <textarea id="user-input" placeholder="Enter clinical notes or feedback..."></textarea>
+            <div class="input-actions">
+              <button id="load-file-btn" class="secondary-button small-button">
+                <i class="fa-solid fa-file-import"></i> Import
+              </button>
+              <button id="send-btn" class="primary-button" disabled>Send</button>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <footer>
+        <p>Built with Electron <span id="electron-version"></span> | Node <span id="node-version"></span></p>
+        <p class="privacy-notice">⚠️ For patient privacy, this application works offline</p>
+      </footer>
+    </div>
   </div>
   
-  <!-- Clarification Dialog -->
-  <div id="clarification-dialog" class="dialog-overlay hidden">
-    <div class="dialog-content">
-      <div class="dialog-header">
-        <h3>Clarification Questions</h3>
+  <!-- Confirmation Modal -->
+  <div id="confirm-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-title">Confirmation</h3>
+        <button id="close-modal-btn" class="icon-button">
+          <i class="fa-solid fa-times"></i>
+        </button>
       </div>
-      <div id="clarification-questions" class="dialog-body">
-        <!-- Questions will be inserted here -->
+      <div class="modal-body">
+        <p id="modal-message">Are you sure you want to perform this action?</p>
       </div>
-      <div class="dialog-footer">
-        <button id="skip-questions-btn" class="secondary-button">Skip Questions</button>
-        <button id="submit-answers-btn" class="primary-button">Submit Answers</button>
+      <div class="modal-footer">
+        <button id="cancel-modal-btn" class="secondary-button">Cancel</button>
+        <button id="confirm-modal-btn" class="primary-button danger">Confirm</button>
       </div>
     </div>
   </div>
