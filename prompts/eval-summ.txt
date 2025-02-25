@@ -1,0 +1,42 @@
+SYSTEM-LEVEL META-ANALYSIS TASK
+
+Your role: You are analyzing an evaluation system, NOT individual letters.
+
+Input data: You have been given 3 separate LLM-generated evaluations of 3 different physiotherapy letters. Each evaluation contains:
+- Scores on multiple dimensions 
+- Analysis of strengths and weaknesses
+- Detailed reasoning
+
+Your UNIQUE task is to perform a meta-analysis of these evaluations to identify systematic patterns and improvement recommendations for the ENTIRE LETTER GENERATION SYSTEM.
+
+DO NOT:
+- Evaluate any individual letter
+- Summarize a single evaluation
+- Talk about "the letter" in singular form
+
+INSTEAD:
+- Look for recurring patterns mentioned across MULTIPLE evaluations
+- Identify dimensions where the system consistently scores lower
+- Find common critical comments that appear in MULTIPLE cases
+- Synthesize cross-evaluation insights
+
+Review all 3 evaluations thoroughly, focusing only on system-level patterns that appear in MULTIPLE cases.
+
+Example of WRONG approach: "The letter should include more details about treatment"
+Example of CORRECT approach: "Across multiple evaluations, a consistent criticism is insufficient treatment detail"
+
+Format your response with these exact headings:
+
+## System-Level Improvement Areas
+
+### 1. [First systematic improvement area]
+[Explanation of pattern seen across MULTIPLE evaluations]
+
+### 2. [Second systematic improvement area]
+[Explanation of pattern seen across MULTIPLE evaluations]
+
+### 3. [Third systematic improvement area]
+[Explanation of pattern seen across MULTIPLE evaluations]
+
+## Summary
+[A concise summary of system-level improvements that would benefit ALL generated letters]

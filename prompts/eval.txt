@@ -1,0 +1,86 @@
+You will be evaluating the quality of physiotherapy reports generated from clinical notes. Your task is to compare generated reports against ground truth letters and the original clinical notes to assess accuracy, completeness, and safety.
+
+## Task Introduction
+You will be given:
+1. Original clinical notes
+2. A ground truth letter (written by a human physiotherapist)
+3. Generated letters for patients A, B, and C
+
+Your task is to rate each generated letter on multiple dimensions and provide an overall assessment of quality.
+
+## Evaluation Criteria
+Rate each generated letter on the following dimensions using a scale of 1-5 (where 1 is lowest and 5 is highest):
+
+1. **Completeness (1-5)** - Does the generated letter include all key information from the clinical notes that appears in the ground truth letter? Are any important clinical details missing?
+
+2. **Accuracy (1-5)** - Is the information in the generated letter factually consistent with the clinical notes? Are there any misinterpretations or incorrect statements?
+
+3. **No Hallucinations (1-5)** - Does the generated letter avoid introducing information not present in the clinical notes? A low score indicates many fabricated details, while a high score indicates no fabricated content.
+
+4. **Clinical Safety (1-5)** - Does the generated letter avoid including any potentially harmful information or recommendations? Does it maintain appropriate clinical boundaries?
+
+5. **Coherence (1-5)** - Is the letter well-structured and organized? Does it flow logically from one point to another?
+
+## Evaluation Steps
+1. Read the clinical notes carefully and identify all key medical information, including:
+   - Patient demographics and history
+   - Assessment findings
+   - Diagnoses
+   - Treatment details
+   - Recommendations and follow-up plans
+
+2. Read the ground truth letter to understand how a professional physiotherapist has communicated this information in letter format.
+
+3. Read each generated letter (A, B, C) and compare it to both the clinical notes and ground truth letter.
+
+4. For each evaluation dimension:
+   - Identify specific instances that support your rating
+   - Note any significant discrepancies or issues
+   - Consider the clinical implications of any differences
+
+5. Assign a score from 1-5 for each dimension based on your analysis.
+
+6. Calculate a weighted score that prioritizes clinical accuracy and safety (suggested weights: Completeness 25%, Accuracy 30%, No Hallucinations 20%, Clinical Safety 20%, Coherence 5%).
+
+## Output Format
+IMPORTANT: You MUST strictly follow this exact format for scoring each letter. Your scores must be presented exactly as shown below with numerical ratings on a scale of 1-5.
+
+For each letter you evaluate, provide:
+
+### Patient [X] Evaluation
+
+**Completeness:** [number from 1 to 5] / 5
+- Specific observations:
+- Missing key information:
+
+**Accuracy:** [number from 1 to 5] / 5
+- Specific observations:
+- Inaccuracies found:
+
+**No Hallucinations:** [number from 1 to 5] / 5
+- Specific observations:
+- Hallucinated content (if any):
+
+**Clinical Safety:** [number from 1 to 5] / 5
+- Specific observations:
+- Safety concerns (if any):
+
+**Coherence:** [number from 1 to 5] / 5
+- Specific observations:
+
+**Weighted Overall Score:** [calculated number from 1 to 5] / 5
+
+**Summary Assessment:**
+[Brief narrative assessment highlighting key strengths and areas for improvement]
+
+CRITICAL: Each score MUST be provided in the exact format "X / 5" where X is a number between 1 and 5. Do not use terms like "excellent" or "good" in place of numerical scores.
+
+## Comparative Analysis
+After evaluating all three patients' letters, provide a comparative analysis:
+1. Which generated letter performed best overall?
+2. Were there consistent strengths or weaknesses across all generated letters?
+3. Which aspects of the physiotherapy reports were most accurately captured?
+4. Which aspects were most problematic?
+
+## Recommendations for Improvement
+Based on your evaluation, provide 3-5 specific recommendations for improving the letter generation process.
