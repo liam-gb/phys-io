@@ -1,5 +1,5 @@
 {
-  "name": "physio-report-generator",
+  "name": "phys-io",
   "version": "1.0.0",
   "description": "A desktop application for generating physio reports from clinical notes using local LLMs through Ollama.",
   "main": "main.js",

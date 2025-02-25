@@ -228,9 +228,6 @@ Thanks for the kind referral of [Patient] for [primary presentation].
 
 Yours sincerely,
 [Name]
-
-After providing the letter, include 2-3 specific clarification questions that would help you improve the content.
-Format these questions clearly, separated from the letter content with "CLARIFICATION QUESTIONS:" on a new line.
 `;
 
     const response = await window.api.ollama.generateConversationalResponse(reportPrompt);
@@ -259,8 +256,221 @@ Format these questions clearly, separated from the letter content with "CLARIFIC
       
       // Update current report index
       currentSession.currentReportIndex = currentSession.messages.length - 1;
+      
+      // Generate clarification questions
+      generateClarificationQuestions(notes, response);
     } else {
       addErrorMessage("Failed to generate report. Please check if Ollama is running.");
+    }
+  } catch (error) {
+    // Remove loading message
+    removeLoadingMessage(loadingId);
+    addErrorMessage(`Error: ${error.message}`);
+  }
+}
+
+// Generate clarification questions based on the notes and generated report
+async function generateClarificationQuestions(notes, reportText) {
+  // Show loading message for questions generation
+  const loadingId = addLoadingMessage();
+  
+  try {
+    const questions = await window.api.ollama.generateClarificationQuestions(notes, reportText);
+    
+    // Remove loading message
+    removeLoadingMessage(loadingId);
+    
+    if (questions && questions.length > 0) {
+      // Add a message indicating we have questions
+      addSystemMessage("I have some clarification questions that may help improve this report:");
+      
+      // Create HTML for questions
+      const questionsHtml = `
+        <div class="clarification-questions">
+          <h4>Clarification Questions:</h4>
+          <ul>
+            ${questions.map(q => `<li>${q.replace(/^\d+\.\s*/, '')}</li>`).join('')}
+          </ul>
+          <div class="clarification-actions">
+            <button class="secondary-button small-button answer-questions-btn">
+              <i class="fa-solid fa-reply"></i> Answer Questions
+            </button>
+          </div>
+        </div>
+      `;
+      
+      // Add the questions to UI
+      const questionsDiv = document.createElement('div');
+      questionsDiv.className = 'message questions-message';
+      questionsDiv.innerHTML = `
+        <div class="message-content">${questionsHtml}</div>
+        <div class="message-timestamp">${formatTimestamp(new Date())}</div>
+      `;
+      
+      // Add event listener for the answer button
+      const answerBtn = questionsDiv.querySelector('.answer-questions-btn');
+      if (answerBtn) {
+        answerBtn.addEventListener('click', () => {
+          showAnswerQuestionsDialog(questions);
+        });
+      }
+      
+      conversationHistory.appendChild(questionsDiv);
+      scrollToBottom();
+      
+      // Store questions in the session
+      currentSession.messages.push({
+        role: 'system',
+        content: 'CLARIFICATION QUESTIONS:\n' + questions.join('\n'),
+        timestamp: new Date().toISOString(),
+        isQuestions: true,
+        questions: questions
+      });
+    }
+  } catch (error) {
+    removeLoadingMessage(loadingId);
+    console.error('Error generating clarification questions:', error);
+  }
+}
+
+// Function to show a dialog for answering clarification questions
+function showAnswerQuestionsDialog(questions) {
+  // Create modal for answering questions
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.id = 'questions-modal';
+  
+  let questionsHtml = '';
+  questions.forEach((q, index) => {
+    const questionText = q.replace(/^\d+\.\s*/, ''); // Remove numbers from beginning
+    questionsHtml += `
+      <div class="question-item">
+        <p class="question-text">${questionText}</p>
+        <textarea id="answer-${index}" placeholder="Your answer..." rows="3" class="question-answer"></textarea>
+      </div>
+    `;
+  });
+  
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Answer Clarification Questions</h3>
+        <button class="icon-button close-questions-modal-btn">
+          <i class="fa-solid fa-times"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <p>Your answers will be used to improve the report:</p>
+        <div class="questions-list">
+          ${questionsHtml}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="secondary-button cancel-questions-btn">Cancel</button>
+        <button class="primary-button submit-answers-btn">Update Report</button>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Add event listeners
+  const closeBtn = modal.querySelector('.close-questions-modal-btn');
+  const cancelBtn = modal.querySelector('.cancel-questions-btn');
+  const submitBtn = modal.querySelector('.submit-answers-btn');
+  
+  closeBtn.addEventListener('click', () => {
+    modal.remove();
+  });
+  
+  cancelBtn.addEventListener('click', () => {
+    modal.remove();
+  });
+  
+  submitBtn.addEventListener('click', () => {
+    // Collect answers
+    const answers = [];
+    questions.forEach((q, index) => {
+      const answerEl = document.getElementById(`answer-${index}`);
+      if (answerEl && answerEl.value.trim()) {
+        answers.push(`Q: ${q.replace(/^\d+\.\s*/, '')}\nA: ${answerEl.value.trim()}`);
+      }
+    });
+    
+    if (answers.length > 0) {
+      // Submit answers and generate updated report
+      submitClarificationAnswers(answers);
+      modal.remove();
+    } else {
+      // Show error if no answers provided
+      const errorMsg = document.createElement('div');
+      errorMsg.className = 'error-message';
+      errorMsg.textContent = 'Please provide at least one answer.';
+      modal.querySelector('.modal-body').prepend(errorMsg);
+    }
+  });
+  
+  // Close when clicking outside
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.remove();
+    }
+  });
+  
+  // Show modal
+  setTimeout(() => {
+    modal.classList.add('show');
+  }, 10);
+}
+
+// Submit clarification answers and generate updated report
+async function submitClarificationAnswers(answers) {
+  // Add user's answers to the conversation
+  const answersText = "Here are my answers to your questions:\n\n" + answers.join('\n\n');
+  addMessageToUI('user', answersText);
+  
+  // Add to session
+  currentSession.messages.push({
+    role: 'user',
+    content: answersText,
+    timestamp: new Date().toISOString()
+  });
+  
+  // Show loading message
+  const loadingId = addLoadingMessage();
+  
+  try {
+    // Get the original notes
+    let initialNotes = '';
+    if (currentSession.messages.length > 0 && currentSession.messages[0].role === 'user') {
+      initialNotes = currentSession.messages[0].content;
+    }
+    
+    // Generate updated report
+    const updatedReport = await window.api.ollama.generateReportWithClarifications(initialNotes, answers);
+    
+    // Remove loading message
+    removeLoadingMessage(loadingId);
+    
+    if (updatedReport) {
+      // Add the updated report to the conversation
+      addMessageToUI('report', updatedReport);
+      
+      // Add to session
+      currentSession.messages.push({
+        role: 'assistant',
+        content: updatedReport,
+        timestamp: new Date().toISOString(),
+        isReport: true
+      });
+      
+      // Update current report index
+      currentSession.currentReportIndex = currentSession.messages.length - 1;
+      
+      // Schedule autosave
+      scheduleAutosave();
+    } else {
+      addErrorMessage("Failed to generate updated report.");
     }
   } catch (error) {
     // Remove loading message
@@ -649,6 +859,7 @@ function addMessageToUI(type, content) {
   const messageDiv = document.createElement('div');
   messageDiv.className = type === 'user' ? 'message user-message' : 
                          type === 'report' ? 'message report-message' : 
+                         type === 'questions' ? 'message questions-message' :
                          'message system-message';
   
   if (type === 'report') {
@@ -673,6 +884,27 @@ function addMessageToUI(type, content) {
     messageDiv.querySelector('.export-btn').addEventListener('click', () => {
       exportReport(content);
     });
+  } else if (type === 'questions') {
+    // For pre-formatted question content (HTML)
+    messageDiv.innerHTML = `
+      <div class="message-content">${content}</div>
+      <div class="message-timestamp">${formatTimestamp(new Date())}</div>
+    `;
+    
+    // Add event listeners for any answer buttons within the content
+    const answerBtn = messageDiv.querySelector('.answer-questions-btn');
+    if (answerBtn) {
+      // Extract questions from the content
+      const questions = [];
+      const questionItems = messageDiv.querySelectorAll('.clarification-questions li');
+      questionItems.forEach(item => {
+        questions.push(item.textContent.trim());
+      });
+      
+      answerBtn.addEventListener('click', () => {
+        showAnswerQuestionsDialog(questions);
+      });
+    }
   } else {
     messageDiv.innerHTML = `
       <div class="message-content">${content.replace(/\n/g, '<br>')}</div>

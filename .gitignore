@@ -4,3 +4,12 @@ dist/
 .env
 settings.json
 data/
+results/
+eval_results/
+config.json
+eval-config.json
+.ipynb_checkpoints/
+eval.log
+eval_analysis.ipynb
+pipeline.log
+test/__pycache__/

@@ -520,3 +520,85 @@ button {
 .hidden {
   display: none !important;
 }
+
+/* Clarification questions styling */
+.clarification-questions {
+  background-color: #f0f8ff;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 8px 0;
+  border-left: 4px solid #007bff;
+}
+
+.clarification-questions h4 {
+  margin-top: 0;
+  margin-bottom: 8px;
+  color: #0062cc;
+}
+
+.clarification-questions ul {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+
+.clarification-questions li {
+  margin-bottom: 8px;
+}
+
+.clarification-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.questions-message {
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  padding: 10px 15px;
+  margin-bottom: 12px;
+  align-self: flex-start;
+  max-width: 85%;
+  word-break: break-word;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+#questions-modal .modal-content {
+  width: 90%;
+  max-width: 650px;
+}
+
+.questions-list {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.question-item {
+  margin-bottom: 20px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #eee;
+}
+
+.question-item:last-child {
+  border-bottom: none;
+}
+
+.question-text {
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.question-answer {
+  width: 100%;
+  padding: 10px;
+  border-radius: 4px;
+  border: 1px solid #ced4da;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.question-answer:focus {
+  outline: none;
+  border-color: #80bdff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
