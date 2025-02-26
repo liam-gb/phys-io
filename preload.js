@@ -30,7 +30,8 @@ contextBridge.exposeInMainWorld('api', {
   files: {
     saveReport: (reportText, filename) => ipcRenderer.invoke('save-report', reportText, filename),
     loadNotes: () => ipcRenderer.invoke('load-notes'),
-    loadDocFile: (filename) => ipcRenderer.invoke('load-doc-file', filename)
+    loadDocFile: (filename) => ipcRenderer.invoke('load-doc-file', filename),
+    loadPromptFile: (filename) => ipcRenderer.invoke('load-prompt-file', filename)
   },
   
   // Session management

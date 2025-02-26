@@ -200,29 +200,59 @@ Provide 2-4 clarification questions that would help improve this report:
 
   async generateReportWithClarifications(notes, clarifications) {
     try {
-      const prompt = `
+      // Read the main prompt template (same one used for the initial report)
+      let mainPromptTemplate = this.readPromptFile(this.promptFile);
+      
+      // If main prompt file doesn't exist or can't be read, use a default prompt
+      if (!mainPromptTemplate) {
+        console.warn(`Warning: Could not load main prompt file ${this.promptFile}, using default prompt`);
+        mainPromptTemplate = `
 You are a physiotherapy assistant helping to convert clinical notes into a professional report.
-You'll use both the original clinical notes and additional clarification information to create a comprehensive report.
+Convert the following clinical notes into a well-structured physiotherapy report:
 
-ORIGINAL CLINICAL NOTES:
-${notes}
+{{notes}}
 
-CLARIFICATION INFORMATION:
-${Array.isArray(clarifications) ? clarifications.join('\n') : clarifications}
-
-Based on the above information, create a well-structured physiotherapy report that includes:
+The report should include:
 1. Patient information (extract from notes)
 2. Assessment summary
 3. Treatment provided
 4. Recommendations
 5. Follow-up plan
 
-Ensure you incorporate the clarification information to make the report more accurate and comprehensive.
-
 IMPORTANT: Respond ONLY with the final report text. Do not include any explanations, your reasoning process, or any text outside the report itself.
+`;
+      }
+
+      // Replace the {{notes}} placeholder in the main prompt
+      const mainPrompt = mainPromptTemplate.replace('{{notes}}', notes);
+      
+      // Read the clarification report prompt template
+      let clarificationTemplate = this.readPromptFile('clarification-report.txt');
+      
+      // If clarification prompt file doesn't exist, use a default
+      if (!clarificationTemplate) {
+        console.warn('Warning: Could not load clarification-report.txt prompt file, using default');
+        clarificationTemplate = `
+# Clarification Enhancement
+
+{{main_prompt}}
+
+## Additional Clarification Information
+The following represents clarifications provided by the physiotherapist:
+
+{{clarifications}}
+
+Based on both the original instructions above and these clarifications, please generate an improved physiotherapy report.
+Ensure you incorporate the clarification information to make the report more accurate and comprehensive.
 
 At the end of your report, include a section with the header <questions> that lists any remaining questions you have about the patient or treatment plan.
 `;
+      }
+      
+      // Replace placeholders in the clarification template
+      let prompt = clarificationTemplate
+        .replace('{{main_prompt}}', mainPrompt)
+        .replace('{{clarifications}}', Array.isArray(clarifications) ? clarifications.join('\n') : clarifications);
 
       const response = await this.makeOllamaRequest(prompt);
       return response;
@@ -322,29 +352,54 @@ At the end of your report, include a section with the header <questions> that li
   }
   
   estimateModelParameters(modelName) {
+    // Log the model name we're analyzing
+    console.log(`Estimating parameters for model: ${modelName}`);
+    
     // Extract model size from name (look for patterns like 7b, 13b, etc.)
     let modelSizeInB = null;
     const lowerModelName = modelName.toLowerCase();
     
-    // First try to extract explicit parameter count
+    // Special handling for specific models
+    if (lowerModelName.includes('llama3.2') || lowerModelName.includes('llama3:2')) {
+      if (!lowerModelName.includes('70b')) {
+        // All llama3.2 models except 70B are 3B models
+        console.log('Detected llama3.2 3B model');
+        return 3;
+      }
+    }
+    
+    if (lowerModelName.includes('llama3.1') || lowerModelName.includes('llama3:1')) {
+      // Default llama3.1 is 8B
+      console.log('Detected llama3.1 8B model');
+      return 8;
+    }
+    
+    // Try to extract explicit parameter count
     const sizeMatch = lowerModelName.match(/[:-](\d+)b/i);
     
     if (sizeMatch && sizeMatch[1]) {
       modelSizeInB = parseInt(sizeMatch[1]);
+      console.log(`Extracted parameter count from name: ${modelSizeInB}B`);
     } else {
       // Known specific models and their parameter counts
       const specificModels = {
-        'llama3.2': 3,
-        'llama3.2latest': 3,
-        'llama3.1': 8,
-        'llama3.1latest': 8,
-        'llama3.2-1b': 1
+        'phi3': 3,
+        'gemma': 2,
+        'gemma:2b': 2,
+        'gemma:7b': 7,
+        'phi': 2,
+        'phi-2': 2,
+        'vicuna': 7,
+        'zephyr': 7,
+        'deepseek': 8,
+        'mixtral': 47
       };
       
-      // Check for exact match in specific models
+      // Check for specific models with known sizes
       for (const [model, size] of Object.entries(specificModels)) {
         if (lowerModelName.includes(model.toLowerCase())) {
           modelSizeInB = size;
+          console.log(`Matched specific model ${model}: ${modelSizeInB}B`);
           break;
         }
       }
@@ -356,20 +411,15 @@ At the end of your report, include a section with the header <questions> that li
           'llama2': 7,
           'llama3': 8,
           'mistral': 7,
-          'mixtral': 47,
           'codellama': 7,
-          'wizardcoder': 13,
-          'vicuna': 7,
-          'zephyr': 7,
-          'phi': 2,
-          'gemma': 2,
-          'deepseek': 8
+          'wizardcoder': 13
         };
         
         // Try to match the model family
         for (const [family, size] of Object.entries(defaultSizes)) {
           if (lowerModelName.includes(family.toLowerCase())) {
             modelSizeInB = size;
+            console.log(`Matched model family ${family}: ${modelSizeInB}B`);
             break;
           }
         }
@@ -378,9 +428,9 @@ At the end of your report, include a section with the header <questions> that li
       // Default to 7B if we couldn't identify
       if (!modelSizeInB) {
         modelSizeInB = 7;
+        console.log(`Could not identify model size, defaulting to ${modelSizeInB}B`);
       }
     }
-    
     
     return modelSizeInB;
   }
@@ -464,17 +514,21 @@ At the end of your report, include a section with the header <questions> that li
     // Determine comfort level based on matrix
     const ranges = compatMatrix[archType][ramCategory];
     
-    if (modelSizeInB >= ranges.easy[0] && modelSizeInB < ranges.easy[1]) {
+    if (modelSizeInB >= ranges.easy[0] && modelSizeInB <= ranges.easy[1]) {
       comfortLevel = 'Easy';
-      message = 'No sweat, your machine should run this just fine.';
-    } else if (modelSizeInB >= ranges.difficult[0] && modelSizeInB < ranges.difficult[1]) {
+      message = 'Will run well';
+    } else if (modelSizeInB >= ranges.difficult[0] && modelSizeInB <= ranges.difficult[1]) {
       comfortLevel = 'Difficult';
-      message = "It'll run, but please be patient.";
+      message = "Will run slowly";
       loadingMessage = 'This could take a few minutes. Plenty of time for tea.';
     } else {
       comfortLevel = 'Impossible';
-      message = 'Sorry, your machine is not cut out for this model size.';
+      message = 'Not enough RAM';
     }
+    
+    // Debug output to help troubleshoot
+    console.log(`Model compatibility for ${modelName}: Size=${modelSizeInB}B, RAM=${ram}GB, Arch=${archType}, Level=${comfortLevel}`);
+    console.log(`Ranges - Easy: ${ranges.easy[0]}-${ranges.easy[1]}B, Difficult: ${ranges.difficult[0]}-${ranges.difficult[1]}B`);
     
     return {
       modelSizeInB,

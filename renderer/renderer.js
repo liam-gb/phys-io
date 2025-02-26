@@ -102,9 +102,10 @@ async function getSystemInfo() {
 // Evaluate model compatibility
 async function evaluateModelCompatibility(modelName) {
   try {
-    if (!modelCompatibilityInfo[modelName]) {
-      modelCompatibilityInfo[modelName] = await window.api.ollama.evaluateModelCompatibility(modelName);
-    }
+    // Always get fresh evaluation to ensure it's updated
+    modelCompatibilityInfo[modelName] = await window.api.ollama.evaluateModelCompatibility(modelName);
+    
+    console.log(`Evaluated compatibility for ${modelName}:`, modelCompatibilityInfo[modelName]);
     return modelCompatibilityInfo[modelName];
   } catch (error) {
     console.error(`Failed to evaluate compatibility for ${modelName}:`, error);
@@ -212,23 +213,35 @@ async function loadModels() {
 
 // Update compatibility info display
 async function updateModelCompatibilityDisplay(modelName) {
-  // Get compatibility info if not already available
-  const compatInfo = await evaluateModelCompatibility(modelName);
-  
-  // Update model status display if it exists
-  const modelStatusElement = document.getElementById('model-status');
-  if (modelStatusElement) {
-    // Remove previous classes
-    modelStatusElement.classList.remove('easy', 'difficult', 'impossible');
-    // Add new class
-    modelStatusElement.classList.add(compatInfo.comfortLevel.toLowerCase());
-    // Update message
-    modelStatusElement.textContent = compatInfo.message;
-    // Make sure it's visible
-    modelStatusElement.style.display = 'inline-block';
+  try {
+    // Get compatibility info if not already available
+    const compatInfo = await evaluateModelCompatibility(modelName);
+    
+    // Update model status display if it exists
+    const modelStatusElement = document.getElementById('model-status');
+    if (modelStatusElement) {
+      // Remove previous classes
+      modelStatusElement.classList.remove('easy', 'difficult', 'impossible');
+      
+      // Convert comfort level to lowercase for class names
+      const comfortClass = compatInfo.comfortLevel.toLowerCase();
+      
+      // Add new class
+      modelStatusElement.classList.add(comfortClass);
+      
+      // Update message
+      modelStatusElement.textContent = compatInfo.message;
+      
+      // Make sure it's visible
+      modelStatusElement.style.display = 'inline-block';
+      
+      modelStatusElement.textContent = compatInfo.message;
+    }
+    
+    console.log(`Updated model compatibility display for ${modelName}: ${compatInfo.comfortLevel}`);
+  } catch (error) {
+    console.error('Error updating model compatibility display:', error);
   }
-  
-  console.log(`Updated model compatibility display for ${modelName}: ${compatInfo.comfortLevel}`);
 }
 
 // Handle sending messages
@@ -276,52 +289,8 @@ async function generateInitialReport(notes) {
   const loadingId = addLoadingMessage();
   
   try {
-    const reportPrompt = `
-# Medical Note to Letter Transformation
-
-You are an experienced physiotherapist writing to a referring colleague. Transform these clinical notes into a professional letter while maintaining the natural, collegial tone used between experienced healthcare professionals.
-
-Clinical Notes to Transform:
-${notes}
-
-Please write a professional letter following these guidelines:
-
-1. Tone & Style
-- Write as one colleague to another - professional but personable
-- Maintain clinical precision while avoiding overly formal language
-- Use natural transitions between topics
-- Express clinical reasoning conversationally
-
-2. Structure
-- Begin with brief thanks for referral
-- Weave history, findings and reasoning naturally
-- Use paragraph breaks for readability
-- End with clear follow-up plans
-
-3. Content Requirements
-- Transform clinical shorthand to full terms
-- Present findings in a narrative flow
-- Maintain all specific measurements and clinical terminology
-- Include lifestyle/functional context where relevant
-
-Letter Framework:
-Dear [Name],
-
-Thanks for the kind referral of [Patient] for [primary presentation].
-
-[Brief acknowledgment of known history]
-
-[Integrated examination findings and clinical reasoning]
-
-[Management approach and rationale]
-
-[Follow-up plans and timeline]
-
-Yours sincerely,
-[Name]
-`;
-
-    const response = await window.api.ollama.generateConversationalResponse(reportPrompt);
+    // Use the generateReport method which already uses the configured prompt file
+    const response = await window.api.ollama.generateReport(notes);
     
     // Remove loading message
     removeLoadingMessage(loadingId);
@@ -383,7 +352,7 @@ async function generateClarificationQuestions(notes, reportText) {
             ${questions.map(q => `<li>${q.replace(/^\d+\.\s*/, '')}</li>`).join('')}
           </ul>
           <div class="clarification-actions">
-            <button class="secondary-button small-button answer-questions-btn">
+            <button class="secondary-button small-button answer-questions-btn" style="background-color: #f0ebff; color: #6B3FA0; border-color: #d4c6ff;">
               <i class="fa-solid fa-reply"></i> Answer Questions
             </button>
           </div>
@@ -577,7 +546,7 @@ async function generateResponse() {
   
   try {
     // Build prompt from conversation history
-    const prompt = buildConversationPrompt();
+    const prompt = await buildConversationPrompt();
     
     const response = await window.api.ollama.generateConversationalResponse(prompt);
     
@@ -609,7 +578,7 @@ async function generateResponse() {
 }
 
 // Build conversation prompt
-function buildConversationPrompt() {
+async function buildConversationPrompt() {
   let initialNotes = '';
   
   // Find the first user message (clinical notes)
@@ -617,12 +586,19 @@ function buildConversationPrompt() {
     initialNotes = currentSession.messages[0].content;
   }
   
-  let prompt = `
+  try {
+    // First get the main prompt template using the configured prompt file
+    const promptFile = await window.api.ollama.getPromptFile();
+    let mainPromptTemplate = await window.api.files.loadPromptFile(promptFile);
+    
+    // If loading the main prompt fails, use a default prompt
+    if (!mainPromptTemplate) {
+      console.warn(`Failed to load prompt file: ${promptFile}, using default`);
+      mainPromptTemplate = `
 You are a physiotherapy assistant helping to convert clinical notes into a professional report.
-Your task is to create or update a physiotherapy report based on the following information.
+Convert the following clinical notes into a well-structured physiotherapy report:
 
-Original clinical notes:
-${initialNotes}
+{{notes}}
 
 The report should include:
 1. Patient information (extract from notes)
@@ -630,22 +606,64 @@ The report should include:
 3. Treatment provided
 4. Recommendations
 5. Follow-up plan
+`;
+    }
+    
+    // Replace notes in main prompt
+    const mainPrompt = mainPromptTemplate.replace('{{notes}}', initialNotes);
+    
+    // Build conversation history
+    let conversationText = '';
+    for (let i = 1; i < currentSession.messages.length; i++) {
+      const message = currentSession.messages[i];
+      conversationText += `\n${message.role.toUpperCase()}: ${message.content}\n`;
+    }
+    
+    // Try to load the conversation prompt template
+    let convPromptTemplate = await window.api.files.loadPromptFile('conversation-prompt.txt');
+    
+    if (!convPromptTemplate) {
+      console.warn('Failed to load conversation-prompt.txt, using default');
+      return `
+${mainPrompt}
 
 Conversation history:
-`;
+${conversationText}
 
-  // Add conversation history, skipping the first message (already included as notes)
-  for (let i = 1; i < currentSession.messages.length; i++) {
-    const message = currentSession.messages[i];
-    prompt += `\n${message.role.toUpperCase()}: ${message.content}\n`;
-  }
-  
-  prompt += `
 Based on the above conversation and feedback, please provide an updated physiotherapy report.
 IMPORTANT: Respond ONLY with the final report text. Do not include any explanations, your reasoning process, or any text outside the report itself.
 `;
+    }
+    
+    // Use the conversation prompt template
+    return convPromptTemplate
+      .replace('{{main_prompt}}', mainPrompt)
+      .replace('{{conversation}}', conversationText);
+      
+  } catch (error) {
+    console.error('Error building conversation prompt:', error);
+    
+    // Fallback to simple prompt if anything fails
+    let conversationText = '';
+    for (let i = 1; i < currentSession.messages.length; i++) {
+      const message = currentSession.messages[i];
+      conversationText += `\n${message.role.toUpperCase()}: ${message.content}\n`;
+    }
+    
+    return `
+You are a physiotherapy assistant helping to convert clinical notes into a professional report.
+Your task is to create or update a physiotherapy report based on the following information.
 
-  return prompt;
+Original clinical notes:
+${initialNotes}
+
+Conversation history:
+${conversationText}
+
+Based on the above conversation and feedback, please provide an updated physiotherapy report.
+IMPORTANT: Respond ONLY with the final report text. Do not include any explanations.
+`;
+  }
 }
 
 // Session management functions
@@ -733,20 +751,32 @@ async function generateSessionTitle() {
     const initialNotes = currentSession.messages[0].content;
     const firstReport = currentSession.messages.find(m => m.role === 'assistant' && m.isReport)?.content || '';
     
-    const titlePrompt = `
+    // Try to load the session title prompt template
+    let titlePromptTemplate = await window.api.files.loadPromptFile('session-title.txt');
+    
+    // If the prompt file fails to load, use a default
+    if (!titlePromptTemplate) {
+      console.warn('Failed to load session-title.txt, using default');
+      titlePromptTemplate = `
 You are helping to generate a short, descriptive title for a physiotherapy session.
 Based on the following information, create a concise title (3-5 words) that summarizes the key issue or treatment:
 
 PATIENT NOTES:
-${initialNotes.substring(0, 500)}
+{{notes}}
 
 REPORT EXCERPT:
-${firstReport.substring(0, 300)}
+{{report}}
 
 Reply ONLY with the title, nothing else. Keep it short and specific to the condition or treatment.
 Do not include any explanatory text, thinking process, or tags like <thinking>.
 The title must be 30 characters or less to fit in a menu.
 `;
+    }
+    
+    // Replace placeholders in the template
+    const titlePrompt = titlePromptTemplate
+      .replace('{{notes}}', initialNotes.substring(0, 500))
+      .replace('{{report}}', firstReport.substring(0, 300));
 
     const title = await window.api.ollama.generateConversationalResponse(titlePrompt);
     
@@ -858,8 +888,6 @@ function startNewSession() {
 }
 
 async function saveSession() {
-  // Don't save empty sessions
-  if (currentSession.messages.length === 0) return;
   
   try {
     const timestamp = new Date().toISOString();
@@ -1384,9 +1412,10 @@ confirmModal.addEventListener('click', (e) => {
 modelSelect.addEventListener('change', async () => {
   const newModel = modelSelect.value;
   currentSession.model = newModel;
-  window.api.ollama.setModel(newModel);
+  await window.api.ollama.setModel(newModel);
   
-  // Update compatibility info display
+  // Clear the cache and re-fetch all compatibility info
+  modelCompatibilityInfo = {};
   await updateModelCompatibilityDisplay(newModel);
   
   scheduleAutosave();

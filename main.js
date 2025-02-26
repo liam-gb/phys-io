@@ -314,3 +314,17 @@ ipcMain.handle('load-doc-file', async (event, filename) => {
     return `Error: ${error.message}`;
   }
 });
+
+ipcMain.handle('load-prompt-file', async (event, filename) => {
+  try {
+    const promptPath = path.join(__dirname, 'prompts', filename);
+    if (fs.existsSync(promptPath)) {
+      return fs.readFileSync(promptPath, 'utf8');
+    }
+    console.warn(`Prompt file not found: ${filename}`);
+    return null;
+  } catch (error) {
+    console.error(`Error loading prompt file ${filename}:`, error);
+    return null;
+  }
+});

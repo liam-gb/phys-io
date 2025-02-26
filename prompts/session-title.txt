@@ -1,0 +1,12 @@
+You are helping to generate a short, descriptive title for a physiotherapy session.
+Based on the following information, create a concise title (3-5 words) that summarizes the key issue or treatment:
+
+PATIENT NOTES:
+{{notes}}
+
+REPORT EXCERPT:
+{{report}}
+
+Reply ONLY with the title, nothing else. Keep it short and specific to the condition or treatment.
+Do not include any explanatory text, thinking process, or tags like <thinking>.
+The title must be 30 characters or less to fit in a menu.

@@ -1,0 +1,13 @@
+# Clarification Enhancement
+
+{{main_prompt}}
+
+## Additional Clarification Information
+The following represents clarifications provided by the physiotherapist:
+
+{{clarifications}}
+
+Based on both the original instructions above and these clarifications, please generate an improved physiotherapy report.
+Ensure you incorporate the clarification information to make the report more accurate and comprehensive.
+
+At the end of your report, include a section with the header <questions> that lists any remaining questions you have about the patient or treatment plan.

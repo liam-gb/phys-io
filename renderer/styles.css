@@ -602,27 +602,33 @@ button {
 .model-status {
   margin-left: 8px;
   font-size: var(--font-size-small);
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
   background-color: #f0f0f0;
   color: #555;
   display: inline-block;
   white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
 }
 
 .model-status.easy {
   background-color: #e6f7ed;
   color: #2c7a51;
+  border-color: #bfe5cf;
 }
 
 .model-status.difficult {
   background-color: #fff7e6;
   color: #a86616;
+  border-color: #ffe8b3;
 }
 
 .model-status.impossible {
   background-color: #ffeaea;
   color: #c53030;
+  border-color: #ffcccc;
 }
 
 /* Tea loading animation */
@@ -660,15 +666,19 @@ button {
 
 /* Clarification questions styling */
 .clarification-questions {
-  padding: 0;
+  padding: 8px 12px;
   margin: 0;
+  background-color: #f8f5ff;
+  border-radius: 6px;
 }
 
 .clarification-questions h4 {
-  margin-top: 16px;
-  margin-bottom: 8px;
+  margin-top: 8px;
+  margin-bottom: 12px;
   font-size: var(--font-size-large);
-  color: #2c3e50;
+  color: #6B3FA0;
+  border-bottom: 1px solid #e6deff;
+  padding-bottom: 8px;
 }
 
 .clarification-questions ul {
@@ -677,26 +687,39 @@ button {
 }
 
 .clarification-questions li {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   color: #34495e;
+  position: relative;
+  padding-left: 5px;
+}
+
+.clarification-questions li::before {
+  content: "•";
+  color: #8A4FFF;
+  font-weight: bold;
+  display: inline-block;
+  margin-right: 6px;
 }
 
 .clarification-actions {
   margin-top: 12px;
   display: flex;
   justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid #e6deff;
 }
 
 .questions-message {
   margin-right: auto;
   background-color: #fff;
   border: 1px solid #e0e0e0;
-  border-left: 4px solid #007bff;
+  border-left: 4px solid #8A4FFF;
   border-radius: 8px;
   padding: 16px;
   width: 95%;
   margin-bottom: 12px;
   word-break: break-word;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 #questions-modal .modal-content {

@@ -1,0 +1,12 @@
+# Conversation Context for Report Update
+
+{{main_prompt}}
+
+## Additional Conversation History
+The following represents feedback and further information provided after the initial report generation:
+
+{{conversation}}
+
+Based on both the original instructions above and this additional conversation, please update the physiotherapy report accordingly.
+
+IMPORTANT: Respond ONLY with the final report text. Do not include any explanations, your reasoning process, or any text outside the report itself.
