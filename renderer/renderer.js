@@ -35,24 +35,80 @@ let currentSession = {
 let autosaveTimer = null;
 const AUTOSAVE_DELAY = 5000; // 5 seconds
 
+// Helper function to clean up empty/problematic sessions
+async function cleanupProblematicSessions() {
+  console.log('Starting cleanup of problematic sessions...');
+  
+  try {
+    // Get all sessions
+    const sessions = await window.api.sessions.loadList();
+    
+    // Find empty/problematic sessions
+    const problematicSessions = sessions.filter(session => {
+      return !session.title && !session.patientName;
+    });
+    
+    console.log(`Found ${problematicSessions.length} potentially problematic sessions`);
+    
+    // Delete them
+    for (const session of problematicSessions) {
+      console.log(`Cleaning up empty session: ${session.id}`);
+      try {
+        await window.api.sessions.delete(session.id);
+      } catch (err) {
+        console.error(`Failed to delete problematic session ${session.id}:`, err);
+      }
+    }
+    
+    console.log('Cleanup complete');
+    return problematicSessions.length > 0;
+  } catch (error) {
+    console.error('Error during cleanup:', error);
+    return false;
+  }
+}
+
 // Initialize app
 async function initializeApp() {
+  console.log('Initializing app...');
+  
+  // Verify DOM elements are correctly loaded
+  console.log('DOM Elements check:');
+  console.log('- newSessionBtn:', newSessionBtn);
+  console.log('- sidebar:', sidebar);
+  console.log('- sessionsList:', sessionsList);
+  
+  // Check connection and load models
   await checkOllamaConnection();
+  
+  // Clean up any problematic sessions
+  const cleanupPerformed = await cleanupProblematicSessions();
+  
+  // Load sessions (will be clean after cleanup)
   await loadSessions();
   
   // Show sidebar by default
   sidebar.classList.add('open');
   
-  // Create new session if none exists
-  if (sessionsList.innerHTML === '<div class="empty-state">No saved sessions</div>') {
+  // Create new session if none exists or we just did a cleanup
+  if (sessionsList.innerHTML === '<div class="empty-state">No saved sessions</div>' || cleanupPerformed) {
+    console.log('No saved sessions found or cleanup performed, starting new session');
     startNewSession();
   } else {
     // Try to load most recent session
     const latestSession = sessionsList.querySelector('.session-item');
+    console.log('Found latest session:', latestSession);
     if (latestSession) {
       await loadSession(latestSession.dataset.id);
     }
   }
+  
+  // Re-attach event listener to ensure it works
+  console.log('Re-attaching newSessionBtn event listener');
+  newSessionBtn.addEventListener('click', (event) => {
+    console.log('New Session button clicked (re-attached listener) - event:', event.type);
+    startNewSession();
+  });
 }
 
 // Check Ollama connection
@@ -717,10 +773,37 @@ function addSessionToSidebar(session) {
   });
   
   const deleteBtn = sessionItem.querySelector('.delete-session-btn');
-  deleteBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    showDeleteConfirmation(session.id, session.title || session.patientName || 'this session');
-  });
+  if (deleteBtn) {
+    // Add a more visible style to the delete button to ensure it's clickable
+    deleteBtn.style.cursor = 'pointer';
+    deleteBtn.style.padding = '8px';
+    deleteBtn.style.backgroundColor = '#f8e5e5';
+    deleteBtn.style.borderRadius = '4px';
+    deleteBtn.style.zIndex = '100';
+    
+    // Add both click and mousedown events to ensure it registers
+    const handleDeleteClick = (e) => {
+      console.log('Delete button clicked for session:', session.id);
+      e.stopPropagation();
+      e.preventDefault();
+      
+      // Directly delete problematic empty sessions
+      if (!session.title && !session.patientName && (!session.messages || session.messages.length === 0)) {
+        console.log('Detected empty session, deleting directly without confirmation');
+        deleteSession(session.id);
+      } else {
+        // Regular confirmation for non-empty sessions
+        showDeleteConfirmation(session.id, session.title || session.patientName || 'this session');
+      }
+      
+      return false;
+    };
+    
+    deleteBtn.addEventListener('click', handleDeleteClick);
+    deleteBtn.addEventListener('mousedown', handleDeleteClick);
+  } else {
+    console.error('Delete button not found in session item');
+  }
   
   sessionsList.appendChild(sessionItem);
 }
@@ -860,34 +943,47 @@ async function loadSession(sessionId) {
 }
 
 function startNewSession() {
-  // Clear conversation history
-  conversationHistory.innerHTML = '';
+  console.log('Starting new session...');
   
-  // Add initial system message
-  addSystemMessage('Enter clinical notes to generate a report');
-  
-  // Reset session
-  currentSession = {
-    id: null,
-    title: null,
-    patientName: null,
-    model: modelSelect.value,
-    messages: [],
-    currentReportIndex: -1,
-    isInitialMessage: true,
-    lastSaved: null
-  };
-  
-  // Reset active session in sidebar
-  document.querySelectorAll('.session-item').forEach(item => {
-    item.classList.remove('active');
-  });
-  
-  // Autosave the new session
-  saveSession();
+  try {
+    // Clear conversation history
+    conversationHistory.innerHTML = '';
+    
+    // Add initial system message
+    console.log('Adding system message');
+    addSystemMessage('Enter clinical notes to generate a report');
+    
+    // Reset session
+    console.log('Resetting session state, current model value:', modelSelect.value);
+    currentSession = {
+      id: null,
+      title: null,
+      patientName: null,
+      model: modelSelect.value || store.get('ollamaModel', 'deepseek-r1:8b'),
+      messages: [],
+      currentReportIndex: -1,
+      isInitialMessage: true,
+      lastSaved: null
+    };
+    
+    // Reset active session in sidebar
+    console.log('Resetting active sessions in sidebar');
+    document.querySelectorAll('.session-item').forEach(item => {
+      item.classList.remove('active');
+    });
+    
+    // Autosave the new session
+    console.log('Saving the new session');
+    saveSession();
+    
+    console.log('New session creation complete');
+  } catch (error) {
+    console.error('Error creating new session:', error);
+  }
 }
 
 async function saveSession() {
+  console.log('saveSession called with session data:', JSON.stringify(currentSession, null, 2));
   
   try {
     const timestamp = new Date().toISOString();
@@ -896,13 +992,18 @@ async function saveSession() {
       savedAt: timestamp
     };
     
+    console.log('Sending session data to window.api.sessions.save');
     const result = await window.api.sessions.save(sessionData);
+    console.log('Save result:', result);
+    
     if (result.success) {
+      console.log('Session saved successfully with ID:', result.id);
       currentSession.id = result.id || currentSession.id;
       currentSession.lastSaved = timestamp;
       
       // If this is first save, add to sidebar
       if (!document.querySelector(`.session-item[data-id="${currentSession.id}"]`)) {
+        console.log('Adding new session to sidebar');
         const sessionInfo = {
           id: currentSession.id,
           title: currentSession.title,
@@ -911,10 +1012,12 @@ async function saveSession() {
         };
         addSessionToSidebar(sessionInfo);
       } else {
+        console.log('Updating existing session in sidebar');
         updateSessionInSidebar();
       }
       
       // Mark as active
+      console.log('Marking session as active in sidebar');
       document.querySelectorAll('.session-item').forEach(item => {
         item.classList.remove('active');
       });
@@ -922,9 +1025,12 @@ async function saveSession() {
       if (activeItem) {
         activeItem.classList.add('active');
       }
+    } else {
+      console.error('Session save failed:', result);
     }
   } catch (error) {
     console.error('Save session error:', error);
+    console.error('Error stack:', error.stack);
   }
 }
 
@@ -941,29 +1047,62 @@ function scheduleAutosave() {
 }
 
 async function deleteSession(sessionId) {
+  console.log('Attempting to delete session with ID:', sessionId);
+  
   try {
-    await window.api.sessions.delete(sessionId);
-    
-    // Remove from sidebar
+    // First find and remove the element from the DOM to ensure UI is responsive
     const sessionElement = document.querySelector(`.session-item[data-id="${sessionId}"]`);
+    console.log('Found session element in DOM:', sessionElement);
+    
     if (sessionElement) {
+      // Remove the element immediately for better UX
       sessionElement.remove();
+      console.log('Removed session element from DOM');
     }
     
-    // If we deleted the current session, start a new one
+    // Then attempt to delete from the data store
+    console.log('Deleting session from data store...');
+    const result = await window.api.sessions.delete(sessionId);
+    console.log('Delete session result:', result);
+    
+    // Handle the case where the current session was deleted
     if (currentSession.id === sessionId) {
+      console.log('Current session was deleted, starting new session');
       startNewSession();
     }
     
-    // Check if there are any sessions left
+    // Check if there are any sessions left and update UI accordingly
     if (sessionsList.children.length === 0) {
+      console.log('No sessions left, showing empty state');
       sessionsList.innerHTML = '<div class="empty-state">No saved sessions</div>';
     }
     
     showToast('Session deleted');
+    
+    // Force a clean refresh of the sessions list after a short delay
+    setTimeout(() => {
+      console.log('Refreshing sessions list');
+      loadSessions();
+    }, 500);
+    
   } catch (error) {
     console.error('Delete session error:', error);
-    showToast('Failed to delete session', true);
+    console.error('Error stack:', error.stack);
+    
+    // Even if the backend delete fails, make sure the UI is consistent
+    const sessionElement = document.querySelector(`.session-item[data-id="${sessionId}"]`);
+    if (sessionElement) {
+      sessionElement.remove();
+      console.log('Force-removed problematic session element from DOM');
+    }
+    
+    showToast('Failed to delete session - trying to clean up UI', true);
+    
+    // Force a refresh of the sessions list
+    setTimeout(() => {
+      console.log('Forcing sessions list refresh after error');
+      loadSessions();
+    }, 500);
   }
 }
 
@@ -1384,7 +1523,24 @@ function hideInfoModal() {
 }
 
 // Event listeners
-document.addEventListener('DOMContentLoaded', initializeApp);
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('DOM fully loaded');
+  initializeApp();
+  
+  // Add debug button listener
+  setTimeout(() => {
+    const debugBtn = document.getElementById('debug-new-session');
+    if (debugBtn) {
+      console.log('Debug button found, attaching listener');
+      debugBtn.addEventListener('click', (e) => {
+        console.log('Debug new session button clicked');
+        startNewSession();
+      });
+    } else {
+      console.error('Debug button not found in DOM');
+    }
+  }, 1000); // Delay to ensure DOM is fully loaded
+});
 
 toggleSidebarBtn.addEventListener('click', toggleSidebar);
 sendBtn.addEventListener('click', sendMessage);
@@ -1416,7 +1572,36 @@ userInput.addEventListener('keydown', (e) => {
 });
 
 loadFileBtn.addEventListener('click', loadNotesFromFile);
-newSessionBtn.addEventListener('click', startNewSession);
+// Replace the existing event listener with a direct function reference 
+// for simpler debugging and potentially avoiding any event propagation issues
+if (newSessionBtn) {
+  console.log('Adding event listener to newSessionBtn directly');
+  
+  // Remove any existing event listeners by cloning the node
+  const newBtn = newSessionBtn.cloneNode(true);
+  newSessionBtn.parentNode.replaceChild(newBtn, newSessionBtn);
+  
+  // Get the new DOM element reference
+  const newSessionBtnRef = document.getElementById('new-session-btn');
+  
+  // Add the new event listener to the new reference
+  newSessionBtnRef.onclick = function(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    console.log('New Session button clicked (direct onclick handler)');
+    
+    try {
+      startNewSession();
+    } catch (error) {
+      console.error('Error in startNewSession:', error);
+      alert('Error creating new session: ' + error.message);
+    }
+    
+    return false; // Prevent default and stop propagation
+  };
+} else {
+  console.error('newSessionBtn is null or undefined - cannot attach click handler');
+}
 
 // Modal event listeners
 closeModalBtn.addEventListener('click', hideModal);

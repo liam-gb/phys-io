@@ -13,13 +13,17 @@
     <div id="sidebar" class="sidebar">
       <div class="sidebar-header">
         <h3>Saved Sessions</h3>
-        <button id="new-session-btn" class="icon-button" title="New Session">
-          <i class="fa-solid fa-plus"></i>
+        <button id="new-session-btn" class="icon-button" title="New Session" style="cursor: pointer; z-index: 10; padding: 10px; background-color: #f0f4f8; border-radius: 4px;">
+          <i class="fa-solid fa-plus"></i> New
         </button>
       </div>
       <div id="sessions-list" class="sessions-list">
         <!-- Sessions will be populated here -->
-        <div class="empty-state">No saved sessions</div>
+        <div class="empty-state">No saved sessions
+          <div style="margin-top: 20px; padding: 10px; background-color: #e2e8f0; border-radius: 4px; cursor: pointer;" id="debug-new-session">
+            Click here to create a new session (debug)
+          </div>
+        </div>
       </div>
     </div>
 
