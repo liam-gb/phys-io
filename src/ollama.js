@@ -3,43 +3,36 @@ const path = require('path');
 const fs = require('fs');
 const app = require('electron').app || require('@electron/remote').app;
 
-// Simple storage implementation
-class SimpleStore {
-  constructor() {
-    this.storePath = path.join(app ? app.getPath('userData') : __dirname, 'settings.json');
-    this.data = this.load();
-  }
+// Define a simple store implementation since electron-store now requires ESM
+const userDataPath = app.getPath('userData');
+const settingsPath = path.join(userDataPath, 'settings.json');
 
-  load() {
+// Simple store API 
+const store = {
+  get: (key, defaultValue) => {
     try {
-      if (fs.existsSync(this.storePath)) {
-        return JSON.parse(fs.readFileSync(this.storePath, 'utf8'));
+      if (!fs.existsSync(settingsPath)) {
+        return defaultValue;
       }
-    } catch (err) {
-      console.error('Failed to load settings:', err);
+      const data = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      return data[key] !== undefined ? data[key] : defaultValue;
+    } catch (error) {
+      console.error('Error reading settings:', error);
+      return defaultValue;
     }
-    return {};
-  }
-
-  save() {
+  },
+  set: (key, value) => {
     try {
-      fs.writeFileSync(this.storePath, JSON.stringify(this.data, null, 2));
-    } catch (err) {
-      console.error('Failed to save settings:', err);
+      const data = fs.existsSync(settingsPath) 
+        ? JSON.parse(fs.readFileSync(settingsPath, 'utf8')) 
+        : {};
+      data[key] = value;
+      fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2), 'utf8');
+    } catch (error) {
+      console.error('Error writing settings:', error);
     }
   }
-
-  get(key, defaultValue) {
-    return key in this.data ? this.data[key] : defaultValue;
-  }
-
-  set(key, value) {
-    this.data[key] = value;
-    this.save();
-  }
-}
-
-const store = new SimpleStore();
+};
 
 class OllamaClient {
   constructor() {
@@ -58,25 +51,26 @@ class OllamaClient {
       if (fs.existsSync(promptPath)) {
         return fs.readFileSync(promptPath, 'utf8');
       }
-      return null;
+      
+      throw new Error(`Prompt file not found: ${promptName}`);
     } catch (error) {
       console.error(`Error reading prompt file ${promptName}:`, error);
-      return null;
+      throw error;
     }
   }
 
-  // Helper method to make API requests to Ollama
-  async makeOllamaRequest(prompt) {
+  // Helper method to make HTTP requests to Ollama API
+  async makeHttpRequest(endpoint, method, data = null) {
+    const url = `${this.baseUrl}${endpoint}`;
     const request = net.request({
-      method: 'POST',
-      url: `${this.baseUrl}/api/generate`,
+      method: method,
+      url: url,
     });
     
     return new Promise((resolve, reject) => {
       let responseData = '';
       
       request.on('response', (response) => {
-        // add status code check
         if (response.statusCode !== 200) {
           return reject(new Error(`Ollama returned status ${response.statusCode}`));
         }
@@ -87,14 +81,17 @@ class OllamaClient {
         
         response.on('end', () => {
           try {
-            // check if response looks like json
+            if (!responseData.trim()) {
+              console.error('Empty response from Ollama');
+              return reject(new Error('Empty response from Ollama'));
+            }
+            
             if (!responseData.trim().startsWith('{')) {
               console.error('Non-JSON response:', responseData.substring(0, 100));
               return reject(new Error('Invalid response format from Ollama'));
             }
             
-            const parsed = JSON.parse(responseData);
-            resolve(parsed.response);
+            resolve(JSON.parse(responseData));
           } catch (e) {
             console.error('Parse error:', e, 'Data:', responseData.substring(0, 100));
             reject(new Error(`Failed to parse Ollama response: ${e.message}`));
@@ -106,41 +103,33 @@ class OllamaClient {
         reject(new Error(`Ollama request failed: ${error.message}`));
       });
       
-      const requestData = JSON.stringify({
+      if (data) {
+        request.write(JSON.stringify(data));
+      }
+      
+      request.end();
+    });
+  }
+
+  // Helper method to make text generation requests to Ollama
+  async makeOllamaRequest(prompt) {
+    try {
+      const result = await this.makeHttpRequest('/api/generate', 'POST', {
         model: this.model,
         prompt: prompt,
         stream: false
       });
       
-      request.write(requestData);
-      request.end();
-    });
+      return result.response;
+    } catch (error) {
+      throw error;
+    }
   }
 
   async generateReport(notes) {
     try {
-      // Read the prompt template from the specified prompt file
-      let promptTemplate = this.readPromptFile(this.promptFile);
-      
-      // If prompt file doesn't exist or can't be read, use a default prompt
-      if (!promptTemplate) {
-        console.warn(`Warning: Could not load prompt file ${this.promptFile}, using default prompt`);
-        promptTemplate = `
-You are a physiotherapy assistant helping to convert clinical notes into a professional report.
-Convert the following clinical notes into a well-structured physiotherapy report:
-
-{{notes}}
-
-The report should include:
-1. Patient information (extract from notes)
-2. Assessment summary
-3. Treatment provided
-4. Recommendations
-5. Follow-up plan
-
-IMPORTANT: Respond ONLY with the final report text. Do not include any explanations, your reasoning process, or any text outside the report itself.
-`;
-      }
+      // Read the prompt template from the specified prompt file - will throw error if not found
+      const promptTemplate = this.readPromptFile(this.promptFile);
       
       // Replace the {{notes}} placeholder with the actual notes
       const prompt = promptTemplate.replace('{{notes}}', notes);
@@ -152,24 +141,10 @@ IMPORTANT: Respond ONLY with the final report text. Do not include any explanati
     }
   }
 
-  async generateClarificationQuestions(notes, generatedReport) {
+  async generateClarificationQuestions(notes, generatedReport = "") {
     try {
-      // Read the clarification questions prompt template
-      let promptTemplate = this.readPromptFile('clarification-questions.txt');
-      
-      // If prompt file doesn't exist, use a default prompt
-      if (!promptTemplate) {
-        promptTemplate = `
-You are a physiotherapy expert reviewing clinical notes and a generated report letter.
-Compare the original notes with the generated report and identify 2-4 areas where:
-- Information may be missing but would enhance the report
-- Assumptions have been made that aren't clearly supported by the notes
-- Statements are vague and could benefit from more specific details
-- Important follow-up plans or treatment rationales could be expanded upon
-
-Format your response as a numbered list of clear, concise questions.
-`;
-      }
+      // Read the clarification questions prompt template - will throw error if not found
+      const promptTemplate = this.readPromptFile('clarification-questions.txt');
 
       const prompt = `
 ${promptTemplate}
@@ -177,8 +152,8 @@ ${promptTemplate}
 ORIGINAL CLINICAL NOTES:
 ${notes}
 
-GENERATED REPORT:
-${generatedReport}
+${generatedReport ? `GENERATED REPORT:
+${generatedReport}` : ""}
 
 Provide 2-4 clarification questions that would help improve this report:
 `;
@@ -201,56 +176,16 @@ Provide 2-4 clarification questions that would help improve this report:
   async generateReportWithClarifications(notes, clarifications) {
     try {
       // Read the main prompt template (same one used for the initial report)
-      let mainPromptTemplate = this.readPromptFile(this.promptFile);
-      
-      // If main prompt file doesn't exist or can't be read, use a default prompt
-      if (!mainPromptTemplate) {
-        console.warn(`Warning: Could not load main prompt file ${this.promptFile}, using default prompt`);
-        mainPromptTemplate = `
-You are a physiotherapy assistant helping to convert clinical notes into a professional report.
-Convert the following clinical notes into a well-structured physiotherapy report:
-
-{{notes}}
-
-The report should include:
-1. Patient information (extract from notes)
-2. Assessment summary
-3. Treatment provided
-4. Recommendations
-5. Follow-up plan
-
-IMPORTANT: Respond ONLY with the final report text. Do not include any explanations, your reasoning process, or any text outside the report itself.
-`;
-      }
+      const mainPromptTemplate = this.readPromptFile(this.promptFile);
 
       // Replace the {{notes}} placeholder in the main prompt
       const mainPrompt = mainPromptTemplate.replace('{{notes}}', notes);
       
       // Read the clarification report prompt template
-      let clarificationTemplate = this.readPromptFile('clarification-report.txt');
-      
-      // If clarification prompt file doesn't exist, use a default
-      if (!clarificationTemplate) {
-        console.warn('Warning: Could not load clarification-report.txt prompt file, using default');
-        clarificationTemplate = `
-# Clarification Enhancement
-
-{{main_prompt}}
-
-## Additional Clarification Information
-The following represents clarifications provided by the physiotherapist:
-
-{{clarifications}}
-
-Based on both the original instructions above and these clarifications, please generate an improved physiotherapy report.
-Ensure you incorporate the clarification information to make the report more accurate and comprehensive.
-
-At the end of your report, include a section with the header <questions> that lists any remaining questions you have about the patient or treatment plan.
-`;
-      }
+      const clarificationTemplate = this.readPromptFile('clarification-report.txt');
       
       // Replace placeholders in the clarification template
-      let prompt = clarificationTemplate
+      const prompt = clarificationTemplate
         .replace('{{main_prompt}}', mainPrompt)
         .replace('{{clarifications}}', Array.isArray(clarifications) ? clarifications.join('\n') : clarifications);
 
@@ -273,53 +208,28 @@ At the end of your report, include a section with the header <questions> that li
 
   async checkConnection() {
     try {
-      console.log('DEBUG: attempting ollama connection to:', this.baseUrl);
+      console.log('Attempting ollama connection to:', this.baseUrl);
       
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
-          console.log('DEBUG: ollama connection timeout');
+          console.log('Ollama connection timeout');
           resolve(false);
         }, 5000); // 5s timeout
         
-        const request = net.request({
-          method: 'GET',
-          url: `${this.baseUrl}/api/tags`,
-        });
-        
-        request.on('response', (response) => {
-          clearTimeout(timeout);
-          let data = '';
-          response.on('data', (chunk) => {
-            data += chunk;
+        this.makeHttpRequest('/api/tags', 'GET')
+          .then(data => {
+            clearTimeout(timeout);
+            console.log('Ollama models found:', data.models?.length || 0);
+            resolve(true);
+          })
+          .catch(error => {
+            clearTimeout(timeout);
+            console.error('Ollama connection error:', error.message);
+            resolve(false); // fail gracefully
           });
-          
-          response.on('end', () => {
-            console.log('DEBUG: ollama response status:', response.statusCode);
-            if (response.statusCode === 200) {
-              try {
-                const parsed = JSON.parse(data);
-                console.log('DEBUG: ollama models found:', parsed.models?.length || 0);
-                resolve(true);
-              } catch (parseErr) {
-                console.error('DEBUG: failed to parse ollama response:', parseErr);
-                resolve(false);
-              }
-            } else {
-              resolve(false);
-            }
-          });
-        });
-        
-        request.on('error', (error) => {
-          clearTimeout(timeout);
-          console.error('DEBUG: ollama connection error:', error.message);
-          resolve(false); // fail gracefully
-        });
-        
-        request.end();
       });
     } catch (error) {
-      console.error('DEBUG: unexpected error in checkConnection:', error);
+      console.error('Unexpected error in checkConnection:', error);
       return false;
     }
   }
@@ -351,38 +261,18 @@ At the end of your report, include a section with the header <questions> that li
     }
   }
   
-  estimateModelParameters(modelName) {
-    // Log the model name we're analyzing
-    console.log(`Estimating parameters for model: ${modelName}`);
-    
-    // Extract model size from name (look for patterns like 7b, 13b, etc.)
-    let modelSizeInB = null;
-    const lowerModelName = modelName.toLowerCase();
-    
-    // Special handling for specific models
-    if (lowerModelName.includes('llama3.2') || lowerModelName.includes('llama3:2')) {
-      if (!lowerModelName.includes('70b')) {
-        // All llama3.2 models except 70B are 3B models
-        console.log('Detected llama3.2 3B model');
-        return 3;
-      }
-    }
-    
-    if (lowerModelName.includes('llama3.1') || lowerModelName.includes('llama3:1')) {
-      // Default llama3.1 is 8B
-      console.log('Detected llama3.1 8B model');
-      return 8;
-    }
-    
-    // Try to extract explicit parameter count
-    const sizeMatch = lowerModelName.match(/[:-](\d+)b/i);
-    
-    if (sizeMatch && sizeMatch[1]) {
-      modelSizeInB = parseInt(sizeMatch[1]);
-      console.log(`Extracted parameter count from name: ${modelSizeInB}B`);
-    } else {
-      // Known specific models and their parameter counts
-      const specificModels = {
+  // Model size definitions
+  get modelSizeDefinitions() {
+    return {
+      // Special model families
+      specialCases: {
+        'llama3.2': 3,
+        'llama3:2': 3,
+        'llama3.1': 8,
+        'llama3:1': 8
+      },
+      // Specific models with known sizes
+      specificModels: {
         'phi3': 3,
         'gemma': 2,
         'gemma:2b': 2,
@@ -393,46 +283,68 @@ At the end of your report, include a section with the header <questions> that li
         'zephyr': 7,
         'deepseek': 8,
         'mixtral': 47
-      };
-      
-      // Check for specific models with known sizes
-      for (const [model, size] of Object.entries(specificModels)) {
-        if (lowerModelName.includes(model.toLowerCase())) {
-          modelSizeInB = size;
-          console.log(`Matched specific model ${model}: ${modelSizeInB}B`);
-          break;
-        }
-      }
-      
-      // If still not found, use model family defaults
-      if (!modelSizeInB) {
-        // Default sizes for models without explicit size in name
-        const defaultSizes = {
-          'llama2': 7,
-          'llama3': 8,
-          'mistral': 7,
-          'codellama': 7,
-          'wizardcoder': 13
-        };
-        
-        // Try to match the model family
-        for (const [family, size] of Object.entries(defaultSizes)) {
-          if (lowerModelName.includes(family.toLowerCase())) {
-            modelSizeInB = size;
-            console.log(`Matched model family ${family}: ${modelSizeInB}B`);
-            break;
-          }
-        }
-      }
-      
-      // Default to 7B if we couldn't identify
-      if (!modelSizeInB) {
-        modelSizeInB = 7;
-        console.log(`Could not identify model size, defaulting to ${modelSizeInB}B`);
+      },
+      // Default sizes for model families
+      modelFamilies: {
+        'llama2': 7,
+        'llama3': 8,
+        'mistral': 7,
+        'codellama': 7,
+        'wizardcoder': 13
+      },
+      // Default size if nothing else matches
+      defaultSize: 7
+    };
+  }
+  
+  estimateModelParameters(modelName) {
+    console.log(`Estimating parameters for model: ${modelName}`);
+    
+    let modelSizeInB = null;
+    const lowerModelName = modelName.toLowerCase();
+    const modelSizes = this.modelSizeDefinitions;
+    
+    // Special case handling for llama3.2 70b
+    if ((lowerModelName.includes('llama3.2') || lowerModelName.includes('llama3:2')) && 
+        lowerModelName.includes('70b')) {
+      return 70;
+    }
+    
+    // Check special cases first
+    for (const [specialCase, size] of Object.entries(modelSizes.specialCases)) {
+      if (lowerModelName.includes(specialCase.toLowerCase())) {
+        console.log(`Matched special case ${specialCase}: ${size}B`);
+        return size;
       }
     }
     
-    return modelSizeInB;
+    // Try to extract explicit parameter count
+    const sizeMatch = lowerModelName.match(/[:-](\d+)b/i);
+    if (sizeMatch && sizeMatch[1]) {
+      modelSizeInB = parseInt(sizeMatch[1]);
+      console.log(`Extracted parameter count from name: ${modelSizeInB}B`);
+      return modelSizeInB;
+    }
+    
+    // Check specific models
+    for (const [model, size] of Object.entries(modelSizes.specificModels)) {
+      if (lowerModelName.includes(model.toLowerCase())) {
+        console.log(`Matched specific model ${model}: ${size}B`);
+        return size;
+      }
+    }
+    
+    // Check model families
+    for (const [family, size] of Object.entries(modelSizes.modelFamilies)) {
+      if (lowerModelName.includes(family.toLowerCase())) {
+        console.log(`Matched model family ${family}: ${size}B`);
+        return size;
+      }
+    }
+    
+    // Default if we couldn't identify
+    console.log(`Could not identify model size, defaulting to ${modelSizes.defaultSize}B`);
+    return modelSizes.defaultSize;
   }
   
   evaluateModelCompatibility(modelName, systemInfo) {
@@ -508,8 +420,8 @@ At the end of your report, include a section with the header <questions> that li
     
     // Default values
     let comfortLevel = 'Easy';
-  let message = 'Will run well'; 
-  let loadingMessage = null;
+    let message = 'Will run well'; 
+    let loadingMessage = null;
     
     // Determine comfort level based on matrix
     const ranges = compatMatrix[archType][ramCategory];
@@ -540,39 +452,12 @@ At the end of your report, include a section with the header <questions> that li
 
   async getAvailableModels() {
     try {
-      const request = net.request({
-        method: 'GET',
-        url: `${this.baseUrl}/api/tags`,
-      });
-      
-      return new Promise((resolve, reject) => {
-        let responseData = '';
-        
-        request.on('response', (response) => {
-          response.on('data', (chunk) => {
-            responseData += chunk.toString();
-          });
-          
-          response.on('end', () => {
-            try {
-              const parsed = JSON.parse(responseData);
-              const models = parsed.models || [];
-              resolve(models.map(model => model.name));
-            } catch (e) {
-              reject(new Error(`Failed to parse Ollama models: ${e.message}`));
-            }
-          });
-        });
-        
-        request.on('error', (error) => {
-          reject(new Error(`Failed to get models: ${error.message}`));
-        });
-        
-        request.end();
-      });
+      const data = await this.makeHttpRequest('/api/tags', 'GET');
+      const models = data.models || [];
+      return models.map(model => model.name);
     } catch (error) {
       console.error('Error getting models:', error);
-      return [];
+      throw error;
     }
   }
 

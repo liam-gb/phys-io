@@ -404,7 +404,7 @@ async function generateClarificationQuestions(notes, reportText) {
     
     if (questions && questions.length > 0) {
       // Add a message indicating we have questions
-      addSystemMessage("I have some clarification questions that may help improve this report:");
+      addSystemMessage("I have some questions that may help improve this report:");
       
       // Create HTML for questions
       const questionsHtml = `
