@@ -111,6 +111,15 @@ ipcMain.handle('set-ollama-model', async (event, model) => {
   return true;
 });
 
+ipcMain.handle('get-prompt-file', async () => {
+  return ollamaClient.getPromptFile();
+});
+
+ipcMain.handle('set-prompt-file', async (event, promptFile) => {
+  ollamaClient.setPromptFile(promptFile);
+  return true;
+});
+
 // Helper to generate a unique ID
 function generateUniqueId() {
   return crypto.randomBytes(16).toString('hex');

@@ -45,6 +45,11 @@ class OllamaClient {
   constructor() {
     this.baseUrl = store.get('ollamaEndpoint', 'http://localhost:11434');
     this.model = store.get('ollamaModel', 'deepseek-r1:8b'); // Default to one of your available models
+    
+    // Get the prompt file from configuration - default to v2.txt
+    this.promptFile = store.get('promptFile', 'v2.txt');
+    
+    console.log(`Using prompt file: ${this.promptFile}`);
   }
 
   // Helper method to read prompt files
@@ -103,11 +108,17 @@ class OllamaClient {
 
   async generateReport(notes) {
     try {
-      const prompt = `
+      // Read the prompt template from the specified prompt file
+      let promptTemplate = this.readPromptFile(this.promptFile);
+      
+      // If prompt file doesn't exist or can't be read, use a default prompt
+      if (!promptTemplate) {
+        console.warn(`Warning: Could not load prompt file ${this.promptFile}, using default prompt`);
+        promptTemplate = `
 You are a physiotherapy assistant helping to convert clinical notes into a professional report.
 Convert the following clinical notes into a well-structured physiotherapy report:
 
-${notes}
+{{notes}}
 
 The report should include:
 1. Patient information (extract from notes)
@@ -118,6 +129,10 @@ The report should include:
 
 IMPORTANT: Respond ONLY with the final report text. Do not include any explanations, your reasoning process, or any text outside the report itself.
 `;
+      }
+      
+      // Replace the {{notes}} placeholder with the actual notes
+      const prompt = promptTemplate.replace('{{notes}}', notes);
 
       return await this.makeOllamaRequest(prompt);
     } catch (error) {
@@ -295,6 +310,15 @@ At the end of your report, include a section with the header <questions> that li
   setEndpoint(endpoint) {
     this.baseUrl = endpoint;
     store.set('ollamaEndpoint', endpoint);
+  }
+  
+  setPromptFile(promptFile) {
+    this.promptFile = promptFile;
+    store.set('promptFile', promptFile);
+  }
+  
+  getPromptFile() {
+    return this.promptFile;
   }
 }
 

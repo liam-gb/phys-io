@@ -19,7 +19,9 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('generate-conversational-response', contextPrompt),
     checkConnection: () => ipcRenderer.invoke('check-ollama-connection'),
     getModels: () => ipcRenderer.invoke('get-ollama-models'),
-    setModel: (model) => ipcRenderer.invoke('set-ollama-model', model)
+    setModel: (model) => ipcRenderer.invoke('set-ollama-model', model),
+    getPromptFile: () => ipcRenderer.invoke('get-prompt-file'),
+    setPromptFile: (promptFile) => ipcRenderer.invoke('set-prompt-file', promptFile)
   },
   
   // File operations
