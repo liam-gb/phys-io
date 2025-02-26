@@ -20,21 +20,7 @@ const nodeVersionElement = document.getElementById('node-version');
 const electronVersionElement = document.getElementById('electron-version');
 let modelCompatibilityCache = {};
 
-if (!document.getElementById('model-status')) {
-  console.log('Model status element missing - creating it');
-  const statusDiv = document.createElement('div');
-  statusDiv.id = 'model-status';
-  statusDiv.className = 'model-status';
-  statusDiv.textContent = 'Checking...';
-  
-  // Find the model-select-wrapper and append the status div
-  const wrapper = document.querySelector('.model-select-wrapper');
-  if (wrapper) {
-    wrapper.appendChild(statusDiv);
-  } else {
-    console.error('Cannot find model-select-wrapper');
-  }
-}
+// Model status element has been removed
 
 // Current session state
 let currentSession = {
@@ -234,12 +220,12 @@ async function loadModels() {
       // Wait for all compatibility evaluations
       const modelData = await Promise.all(modelPromises);
       
-      // Add models to dropdown
+      // Add models to dropdown with compatibility information
       modelData.forEach(({ name, compatibility }) => {
         const option = document.createElement('option');
         option.value = name;
         
-        // build a more descriptive label with status included
+        // Build a more descriptive label with status included
         let statusEmoji = '';
         if (compatibility.comfortLevel === 'Easy') {
           statusEmoji = ' ✓';
@@ -249,14 +235,23 @@ async function loadModels() {
           statusEmoji = ' ❌';
         }
         
-        // include the message directly in the option text
+        // Include the message directly in the option text
         option.textContent = `${name}${statusEmoji} (${compatibility.message})`;
         
-        // still set tooltip for extra context
+        // Set tooltip for extra context
         option.title = compatibility.message;
         
-        // keep the data attribute for potential future use
+        // Keep the data attribute for potential future use
         option.dataset.comfortLevel = compatibility.comfortLevel;
+        
+        // Style option based on comfort level
+        if (compatibility.comfortLevel === 'Easy') {
+          option.style.color = '#2c7a51';
+        } else if (compatibility.comfortLevel === 'Difficult') {
+          option.style.color = '#a86616';
+        } else if (compatibility.comfortLevel === 'Impossible') {
+          option.style.color = '#c53030';
+        }
         
         modelSelect.appendChild(option);
       });
@@ -295,25 +290,8 @@ async function loadModels() {
 }
 
 function updateModelStatusDisplay(compatInfo) {
-  console.log('DEBUG - updating model status with:', compatInfo);
-
-  const modelStatusElement = document.getElementById('model-status');
-  if (modelStatusElement) {
-    // Remove previous classes
-    modelStatusElement.classList.remove('easy', 'difficult', 'impossible');
-    
-    // Convert comfort level to lowercase for class names
-    const comfortClass = compatInfo.comfortLevel.toLowerCase();
-    
-    // Add new class
-    modelStatusElement.classList.add(comfortClass);
-    
-    // Update message
-    modelStatusElement.textContent = compatInfo.message;
-    
-    // Make sure it's visible
-    modelStatusElement.style.display = 'inline-block';
-  }
+  // Function kept for compatibility, but doesn't update any UI elements now
+  console.log('Model compatibility info:', compatInfo);
 }
 
 // Update compatibility info display

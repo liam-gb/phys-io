@@ -629,37 +629,9 @@ button {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Model compatibility info */
+/* Model compatibility info - preserved for CSS compatibility but hidden */
 .model-status {
-  margin-left: 8px;
-  font-size: var(--font-size-small);
-  padding: 4px 8px;
-  border-radius: 6px;
-  background-color: #f0f0f0;
-  color: #555;
-  display: inline-block;
-  white-space: nowrap;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  transition: all 0.2s ease;
-  border: 1px solid transparent;
-}
-
-.model-status.easy {
-  background-color: #e6f7ed;
-  color: #2c7a51;
-  border-color: #bfe5cf;
-}
-
-.model-status.difficult {
-  background-color: #fff7e6;
-  color: #a86616;
-  border-color: #ffe8b3;
-}
-
-.model-status.impossible {
-  background-color: #ffeaea;
-  color: #c53030;
-  border-color: #ffcccc;
+  display: none !important;
 }
 
 /* Tea loading animation */
