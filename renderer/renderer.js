@@ -329,9 +329,6 @@ async function sendMessage() {
     await generateInitialReport(text);
     currentSession.isInitialMessage = false;
     
-    // Add system message prompting for feedback
-    addSystemMessage("Your report is ready. Please provide any feedback to improve it.");
-    
     // Generate a meaningful title for the session
     await generateSessionTitle();
   } else {
@@ -345,10 +342,10 @@ async function sendMessage() {
   scrollToBottom();
 }
 
-// Generate initial report with clarification questions
+// Generate initial letter with clarification questions
 async function generateInitialReport(notes) {
   // Show loading message
-  const loadingId = addLoadingMessage();
+  const loadingId = addLoadingMessage('letter');
   
   try {
     // Use the generateReport method which already uses the configured prompt file
@@ -358,15 +355,26 @@ async function generateInitialReport(notes) {
     removeLoadingMessage(loadingId);
     
     if (response) {
-      // Try to extract patient name from report
+      // Try to extract patient name from letter
       const patientNameMatch = response.match(/Patient(?:\sName)?:\s*([A-Za-z\s]+)(?:,|\n|$)/i);
       if (patientNameMatch && patientNameMatch[1]) {
         currentSession.patientName = patientNameMatch[1].trim();
         updateSessionInSidebar();
       }
       
-      // Add the report to the conversation
-      addMessageToUI('report', response);
+      // Small delay to ensure loading message is gone
+      setTimeout(() => {
+        // Add the letter to the conversation
+        addMessageToUI('letter', response);
+        
+        // Add system message indicating letter is ready
+        addSystemMessage("Your letter is ready.");
+        
+        // Generate clarification questions with a small delay
+        setTimeout(() => {
+          generateClarificationQuestions(notes, response);
+        }, 300);
+      }, 300);
       
       // Add to session
       currentSession.messages.push({
@@ -378,11 +386,8 @@ async function generateInitialReport(notes) {
       
       // Update current report index
       currentSession.currentReportIndex = currentSession.messages.length - 1;
-      
-      // Generate clarification questions
-      generateClarificationQuestions(notes, response);
     } else {
-      addErrorMessage("Failed to generate report. Please check if Ollama is running.");
+      addErrorMessage("Failed to generate letter. Please check if Ollama is running.");
     }
   } catch (error) {
     // Remove loading message
@@ -394,7 +399,7 @@ async function generateInitialReport(notes) {
 // Generate clarification questions based on the notes and generated report
 async function generateClarificationQuestions(notes, reportText) {
   // Show loading message for questions generation
-  const loadingId = addLoadingMessage();
+  const loadingId = addLoadingMessage('clarification');
   
   try {
     const questions = await window.api.ollama.generateClarificationQuestions(notes, reportText);
@@ -402,45 +407,52 @@ async function generateClarificationQuestions(notes, reportText) {
     // Remove loading message
     removeLoadingMessage(loadingId);
     
+    // Check model compatibility for tea-time message
+    const compatibility = await evaluateModelCompatibility(currentSession.model);
+    
     if (questions && questions.length > 0) {
-      // Add a message indicating we have questions
-      addSystemMessage("I have some questions that may help improve this report:");
-      
-      // Create HTML for questions
-      const questionsDiv = document.createElement('div');
-      questionsDiv.className = 'clarification-questions';
-      questionsDiv.innerHTML = `
-        <h4>Clarification Questions:</h4>
-        <ul>
-          ${questions.map(q => `<li>${q.replace(/^\d+\.\s*/, '')}</li>`).join('')}
-        </ul>
-        <div class="clarification-actions">
-          <button class="secondary-button small-button answer-questions-btn" style="background-color: #f0ebff; color: #6B3FA0; border-color: #d4c6ff;">
-            <i class="fa-solid fa-reply"></i> Answer Questions
-          </button>
-        </div>
-        <div class="message-timestamp">${formatTimestamp(new Date())}</div>
-      `;
-      
-      // Add event listener for the answer button
-      const answerBtn = questionsDiv.querySelector('.answer-questions-btn');
-      if (answerBtn) {
-        answerBtn.addEventListener('click', () => {
-          showAnswerQuestionsDialog(questions);
+      // Small delay to ensure loading message is gone
+      setTimeout(() => {
+        // Add a message indicating we have questions
+        addSystemMessage("I have some questions that may help improve this letter:");
+        
+        // Create HTML for questions, removing any quotation marks
+        const questionsDiv = document.createElement('div');
+        questionsDiv.className = 'clarification-questions';
+        
+        questionsDiv.innerHTML = `
+          <h4>Clarification Questions:</h4>
+          <ul>
+            ${questions.map(q => `<li>${q.replace(/^\d+\.\s*/, '').replace(/^["']|["']$/g, '')}</li>`).join('')}
+          </ul>
+          <div class="clarification-actions">
+            <button class="secondary-button small-button answer-questions-btn" style="background-color: #f0ebff; color: #6B3FA0; border-color: #d4c6ff;">
+              <i class="fa-solid fa-reply"></i> Answer Questions
+            </button>
+          </div>
+          <div class="message-timestamp">${formatTimestamp(new Date())}</div>
+        `;
+        
+        // Add event listener for the answer button
+        const answerBtn = questionsDiv.querySelector('.answer-questions-btn');
+        if (answerBtn) {
+          answerBtn.addEventListener('click', () => {
+            showAnswerQuestionsDialog(questions);
+          });
+        }
+        
+        // Add questions to UI
+        addMessageToUI('questions', questionsDiv.outerHTML);
+        
+        // Store questions in the session
+        currentSession.messages.push({
+          role: 'system',
+          content: 'CLARIFICATION QUESTIONS:\n' + questions.join('\n'),
+          timestamp: new Date().toISOString(),
+          isQuestions: true,
+          questions: questions
         });
-      }
-      
-      conversationHistory.appendChild(questionsDiv);
-      scrollToBottom();
-      
-      // Store questions in the session
-      currentSession.messages.push({
-        role: 'system',
-        content: 'CLARIFICATION QUESTIONS:\n' + questions.join('\n'),
-        timestamp: new Date().toISOString(),
-        isQuestions: true,
-        questions: questions
-      });
+      }, 300);
     }
   } catch (error) {
     removeLoadingMessage(loadingId);
@@ -552,7 +564,7 @@ async function submitClarificationAnswers(answers) {
   });
   
   // Show loading message
-  const loadingId = addLoadingMessage();
+  const loadingId = addLoadingMessage('letter');
   
   try {
     // Get the original notes
@@ -561,15 +573,21 @@ async function submitClarificationAnswers(answers) {
       initialNotes = currentSession.messages[0].content;
     }
     
-    // Generate updated report
+    // Generate updated letter
     const updatedReport = await window.api.ollama.generateReportWithClarifications(initialNotes, answers);
     
     // Remove loading message
     removeLoadingMessage(loadingId);
     
     if (updatedReport) {
-      // Add the updated report to the conversation
-      addMessageToUI('report', updatedReport);
+      // Small delay to ensure loading message is gone
+      setTimeout(() => {
+        // Add the updated letter to the conversation
+        addMessageToUI('letter', updatedReport);
+        
+        // Add system message indicating letter is ready
+        addSystemMessage("Your updated letter is ready.");
+      }, 300);
       
       // Add to session
       currentSession.messages.push({
@@ -585,7 +603,7 @@ async function submitClarificationAnswers(answers) {
       // Schedule autosave
       scheduleAutosave();
     } else {
-      addErrorMessage("Failed to generate updated report.");
+      addErrorMessage("Failed to generate updated letter.");
     }
   } catch (error) {
     // Remove loading message
@@ -597,7 +615,7 @@ async function submitClarificationAnswers(answers) {
 // Generate response based on conversation history
 async function generateResponse() {
   // Show loading message
-  const loadingId = addLoadingMessage();
+  const loadingId = addLoadingMessage('response');
   
   try {
     // Build prompt from conversation history
@@ -609,8 +627,14 @@ async function generateResponse() {
     removeLoadingMessage(loadingId);
     
     if (response) {
-      // Add the response to the conversation
-      addMessageToUI('report', response);
+      // Small delay to ensure loading message is gone
+      setTimeout(() => {
+        // Add the response to the conversation
+        addMessageToUI('letter', response);
+        
+        // Add system message indicating letter is ready
+        addSystemMessage("Your letter is ready.");
+      }, 300);
       
       // Add to session
       currentSession.messages.push({
@@ -950,7 +974,7 @@ function startNewSession() {
     
     // Add initial system message
     console.log('Adding system message');
-    addSystemMessage('Enter clinical notes to generate a report');
+    addSystemMessage('Enter clinical notes to generate a letter');
     
     // Reset session
     console.log('Resetting session state, current model value:', modelSelect.value);
@@ -1123,13 +1147,48 @@ function showDeleteConfirmation(sessionId, sessionName) {
 function addMessageToUI(type, content) {
   const messageDiv = document.createElement('div');
   messageDiv.className = type === 'user' ? 'message user-message' : 
-                         type === 'report' ? 'message report-message' : 
+                         type === 'letter' ? 'message letter-message' : 
+                         type === 'report' ? 'message letter-message' : 
                          type === 'questions' ? 'message questions-message' :
                          'message system-message';
   
-  if (type === 'report') {
+  if (type === 'letter') {
+    // Extract thinking content if present
+    const thinkingContent = extractThinking(content);
+    // Remove thinking tags and content for the actual letter
+    const letterContent = removeThinking(content);
+    
+    // Add thinking message first if present
+    if (thinkingContent) {
+      const thinkingDiv = document.createElement('div');
+      thinkingDiv.className = 'thinking-message';
+      
+      // Format thinking content with markdown-like styling
+      const formattedThinking = thinkingContent
+        .split('\n')
+        .map(line => {
+          if (line.startsWith('-')) {
+            return `<li>${line.substring(1).trim()}</li>`;
+          } else if (line.trim().length > 0) {
+            return `<p>${line}</p>`;
+          } else {
+            return '';
+          }
+        })
+        .join('');
+
+      thinkingDiv.innerHTML = `
+        <div class="thinking-content">
+          <h4>AI Thinking:</h4>
+          <ul>${formattedThinking}</ul>
+        </div>
+      `;
+      
+      conversationHistory.appendChild(thinkingDiv);
+    }
+    
     messageDiv.innerHTML = `
-      <div class="message-content">${formatReport(content)}</div>
+      <div class="message-content">${formatReport(letterContent)}</div>
       <div class="message-timestamp">${formatTimestamp(new Date())}</div>
       <div class="message-controls">
         <button class="secondary-button small-button copy-btn">
@@ -1143,11 +1202,11 @@ function addMessageToUI(type, content) {
     
     // Add event listeners for the buttons
     messageDiv.querySelector('.copy-btn').addEventListener('click', () => {
-      copyReportToClipboard(content);
+      copyReportToClipboard(letterContent);
     });
     
     messageDiv.querySelector('.export-btn').addEventListener('click', () => {
-      exportReport(content);
+      exportReport(letterContent);
     });
   } else if (type === 'questions') {
     // For pre-formatted question content (HTML)
@@ -1200,7 +1259,64 @@ function addSystemMessage(content) {
   scrollToBottom();
 }
 
-async function addLoadingMessage() {
+// Array of fun verbs to randomly cycle through for loading messages
+const funVerbs = [
+  'Generating', 'Discombobulating', 'Kerfuffling', 'Noodling', 'Hatching', 'Brewing', 
+  'Fashioning', 'Weaving', 'Cobbling', 'Wrangling', 'Spooling', 'Smithing', 
+  'Manifesting', 'Cultivating', 'Harvesting', 'Spinning', 'Crafting', 'Assembling', 
+  'Fabricating', 'Minting', 'Sculpting', 'Orchestrating', 'Incubating', 'Summoning', 
+  'Unearthing', 'Unravelling', 'Churning', 'Distilling', 'Kindling', 'Birthing', 
+  'Rigging', 'Flumoxing', 'Cockamamying', 'Wonkifying', 'Cobbling-together', 
+  'Hamfisting', 'Faffing-about', 'Paddling-through', 'Wizarding', 'Speedrunning', 
+  'Shredding', 'Turbocharging', 'Mobilising'
+];
+
+let currentVerb = 'Generating';
+let verbChangeTimer = null;
+
+// Function to cycle through verbs randomly
+function startVerbCycling(loadingElement) {
+  // Clear any existing timer
+  if (verbChangeTimer) {
+    clearInterval(verbChangeTimer);
+  }
+  
+  // Set initial verb
+  currentVerb = funVerbs[0];
+  
+  // Start cycling randomly every 60 seconds
+  verbChangeTimer = setInterval(() => {
+    // Get random verb from the array, excluding the current one
+    const filteredVerbs = funVerbs.filter(verb => verb !== currentVerb);
+    const randomIndex = Math.floor(Math.random() * filteredVerbs.length);
+    currentVerb = filteredVerbs[randomIndex];
+    
+    // Update the loading message if it exists
+    if (loadingElement && document.body.contains(loadingElement)) {
+      if (loadingElement.querySelector('.loading-tea p')) {
+        const messageElement = loadingElement.querySelector('.loading-tea p');
+        const originalMessage = messageElement.textContent;
+        if (originalMessage.includes('letter')) {
+          messageElement.textContent = `${currentVerb} letter for you...`;
+        } else if (originalMessage.includes('report')) {
+          messageElement.textContent = `${currentVerb} letter for you...`;
+        } else if (originalMessage.includes('questions')) {
+          messageElement.textContent = `${currentVerb} my questions for you...`;
+        }
+      } else if (loadingElement.textContent.includes('response')) {
+        loadingElement.textContent = `${currentVerb} response...`;
+      } else if (loadingElement.textContent.includes('questions')) {
+        loadingElement.textContent = `${currentVerb} my questions for you...`;
+      } else {
+        loadingElement.textContent = `${currentVerb} letter for you...`;
+      }
+    }
+  }, 60000); // 60 seconds
+  
+  return verbChangeTimer;
+}
+
+async function addLoadingMessage(stage = 'letter') {
   const loadingId = 'loading-' + Date.now();
   const loadingDiv = document.createElement('div');
   loadingDiv.className = 'message system-message loading';
@@ -1209,58 +1325,102 @@ async function addLoadingMessage() {
   // Check model compatibility for custom loading message
   const compatibility = await evaluateModelCompatibility(currentSession.model);
   
-  if (compatibility.comfortLevel === 'Difficult' && compatibility.loadingMessage) {
-    // For difficult models, show tea message with animated SVG
-    loadingDiv.innerHTML = `
-      <div class="loading-tea">
-        <div class="tea-animation">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="80" height="80">
-            <!-- Tea cup -->
-            <g>
-              <path d="M20,40 L80,40 L70,80 L30,80 Z" fill="#fff" stroke="#333" stroke-width="2"/>
-              <path d="M25,40 L75,40 L67,75 L33,75 Z" fill="#f9d5ba" stroke="none">
-                <animate attributeName="fill" values="#f9d5ba;#d4a76a;#f9d5ba" dur="3s" repeatCount="indefinite" />
-              </path>
-              
-              <!-- Tea handle -->
-              <path d="M78,50 Q90,50 90,60 Q90,70 80,70" fill="none" stroke="#333" stroke-width="2"/>
-              
-              <!-- Steam animation -->
-              <path d="M40,30 Q45,20 50,30 Q55,20 60,30" fill="none" stroke="#aaa" stroke-width="2" opacity="0.7">
-                <animate attributeName="d" values="M40,30 Q45,20 50,30 Q55,20 60,30;M40,20 Q45,10 50,20 Q55,10 60,20;M40,30 Q45,20 50,30 Q55,20 60,30" dur="3s" repeatCount="indefinite" />
-                <animate attributeName="opacity" values="0.7;0.3;0.7" dur="3s" repeatCount="indefinite" />
-              </path>
-              
-              <path d="M35,25 Q40,15 45,25" fill="none" stroke="#aaa" stroke-width="1.5" opacity="0.5">
-                <animate attributeName="d" values="M35,25 Q40,15 45,25;M35,15 Q40,5 45,15;M35,25 Q40,15 45,25" dur="2.5s" repeatCount="indefinite" />
-                <animate attributeName="opacity" values="0.5;0.2;0.5" dur="2.5s" repeatCount="indefinite" />
-              </path>
-              
-              <path d="M55,25 Q60,15 65,25" fill="none" stroke="#aaa" stroke-width="1.5" opacity="0.5">
-                <animate attributeName="d" values="M55,25 Q60,15 65,25;M55,15 Q60,5 65,15;M55,25 Q60,15 65,25" dur="2.8s" repeatCount="indefinite" />
-                <animate attributeName="opacity" values="0.5;0.2;0.5" dur="2.8s" repeatCount="indefinite" />
-              </path>
-            </g>
-          </svg>
-        </div>
-        <p>${compatibility.loadingMessage}</p>
-      </div>
-    `;
-  } else {
-    // Default loading message
-    loadingDiv.textContent = 'Generating response...';
+  let loadingMessage = '';
+  
+  if (stage === 'letter') {
+    loadingMessage = `${currentVerb} letter for you...`;
+  } else if (stage === 'report') {
+    loadingMessage = `${currentVerb} letter for you...`;
+  } else if (stage === 'clarification') {
+    loadingMessage = `${currentVerb} my questions for you...`;
+  } else if (stage === 'response') {
+    loadingMessage = `${currentVerb} response...`;
   }
+  
+  // For all models, show tea message with animated SVG
+  loadingDiv.innerHTML = `
+    <div class="loading-tea">
+      <div class="tea-animation">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="80" height="80">
+          <!-- Tea cup -->
+          <g>
+            <path d="M20,40 L80,40 L70,80 L30,80 Z" fill="#fff" stroke="#333" stroke-width="2"/>
+            <path d="M25,40 L75,40 L67,75 L33,75 Z" fill="#f9d5ba" stroke="none">
+              <animate attributeName="fill" values="#f9d5ba;#d4a76a;#f9d5ba" dur="3s" repeatCount="indefinite" />
+            </path>
+            
+            <!-- Tea handle -->
+            <path d="M78,50 Q90,50 90,60 Q90,70 80,70" fill="none" stroke="#333" stroke-width="2"/>
+            
+            <!-- S-shaped Steam animation -->
+            <path d="M50,10 C57,15 43,25 50,30" fill="none" stroke="#aaa" stroke-width="2" opacity="0.7">
+              <animate attributeName="d" values="M50,10 C57,15 43,25 50,30;M50,5 C57,10 43,20 50,25;M50,10 C57,15 43,25 50,30" dur="3s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.7;0.3;0.7" dur="3s" repeatCount="indefinite" />
+            </path>
+            
+            <path d="M40,15 C45,20 35,25 40,30" fill="none" stroke="#aaa" stroke-width="1.5" opacity="0.5">
+              <animate attributeName="d" values="M40,15 C45,20 35,25 40,30;M40,10 C45,15 35,20 40,25;M40,15 C45,20 35,25 40,30" dur="2.5s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.5;0.2;0.5" dur="2.5s" repeatCount="indefinite" />
+            </path>
+            
+            <path d="M60,15 C65,20 55,25 60,30" fill="none" stroke="#aaa" stroke-width="1.5" opacity="0.5">
+              <animate attributeName="d" values="M60,15 C65,20 55,25 60,30;M60,10 C65,15 55,20 60,25;M60,15 C65,20 55,25 60,30" dur="2.8s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.5;0.2;0.5" dur="2.8s" repeatCount="indefinite" />
+            </path>
+          </g>
+        </svg>
+      </div>
+      <p>${loadingMessage}</p>
+      ${compatibility.comfortLevel !== 'Easy' ? '<p class="tea-reminder">This could take a few minutes<br>Plenty of time for tea.</p>' : ''}
+    </div>
+  `;
   
   conversationHistory.appendChild(loadingDiv);
   scrollToBottom();
+  
+  // Start cycling through verbs
+  startVerbCycling(loadingDiv);
   
   return loadingId;
 }
 
 function removeLoadingMessage(id) {
   const loadingElement = document.getElementById(id);
+  
+  // Stop the verb cycling timer
+  if (verbChangeTimer) {
+    clearInterval(verbChangeTimer);
+    verbChangeTimer = null;
+  }
+  
   if (loadingElement) {
-    loadingElement.remove();
+    // Mark it for removal and fade it out
+    loadingElement.classList.add('removing');
+    loadingElement.style.opacity = '0';
+    
+    // Actually remove it after a short delay to allow the fade effect
+    setTimeout(() => {
+      if (document.body.contains(loadingElement)) {
+        loadingElement.remove();
+      }
+      
+      // Check for any orphaned loading messages and remove them
+      const loadingMessages = document.querySelectorAll('.loading');
+      loadingMessages.forEach(msg => {
+        if (!msg.id || msg.id !== id) {
+          console.log('Removing orphaned loading message');
+          msg.remove();
+        }
+      });
+    }, 300);
+  } else {
+    // If we can't find the specific loading element by ID, 
+    // remove any loading messages that might be present
+    console.log('Loading element not found, checking for any loading messages');
+    const loadingMessages = document.querySelectorAll('.loading');
+    loadingMessages.forEach(msg => {
+      msg.remove();
+    });
   }
 }
 
@@ -1303,6 +1463,20 @@ function formatDate(date) {
 }
 
 // Format the report text with HTML
+// Extract thinking content from text
+function extractThinking(text) {
+  const thinkingMatch = text.match(/<thinking>([\s\S]*?)<\/thinking>/);
+  if (thinkingMatch && thinkingMatch[1]) {
+    return thinkingMatch[1].trim();
+  }
+  return null;
+}
+
+// Remove thinking tags and their content from text
+function removeThinking(text) {
+  return text.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+}
+
 function formatReport(reportText) {
   // Split by lines and process
   const lines = reportText.split('\n');
@@ -1372,19 +1546,19 @@ async function copyReportToClipboard(reportText) {
     const textToCopy = tempDiv.textContent || tempDiv.innerText || reportText;
     
     await navigator.clipboard.writeText(textToCopy);
-    showToast('Report copied to clipboard');
+    showToast('Letter copied to clipboard');
   } catch (error) {
     console.error('Failed to copy:', error);
-    showToast('Failed to copy report', true);
+    showToast('Failed to copy letter', true);
   }
 }
 
-// Export report
+// Export letter
 async function exportReport(reportText) {
   // Try to get patient name for filename
-  let suggestedName = 'physiotherapy-report.txt';
+  let suggestedName = 'physiotherapy-letter.txt';
   if (currentSession.patientName) {
-    suggestedName = `${currentSession.patientName.replace(/\s+/g, '_')}_report.txt`;
+    suggestedName = `${currentSession.patientName.replace(/\s+/g, '_')}_letter.txt`;
   }
   
 // Strip HTML if present
@@ -1395,11 +1569,11 @@ async function exportReport(reportText) {
   try {
     const success = await window.api.files.saveReport(textToExport, suggestedName);
     if (success) {
-      showToast('Report exported successfully');
+      showToast('Letter exported successfully');
     }
   } catch (error) {
-    console.error('Failed to export report:', error);
-    showToast('Failed to export report', true);
+    console.error('Failed to export letter:', error);
+    showToast('Failed to export letter', true);
   }
 }
 

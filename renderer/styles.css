@@ -373,7 +373,7 @@ main {
   padding: 12px 16px;
 }
 
-.report-message {
+.letter-message {
   margin-right: auto;
   background-color: #fff;
   border: 1px solid #e0e0e0;
@@ -401,18 +401,18 @@ main {
   gap: 8px;
 }
 
-.report-message h2 {
+.letter-message h2 {
   margin-top: 16px;
   margin-bottom: 8px;
   font-size: var(--font-size-large);
   color: #2c3e50;
 }
 
-.report-message h2:first-child {
+.letter-message h2:first-child {
   margin-top: 0;
 }
 
-.report-message h3 {
+.letter-message h3 {
   margin-top: 14px;
   margin-bottom: 6px;
   font-size: var(--font-size-normal);
@@ -420,16 +420,16 @@ main {
   color: #34495e;
 }
 
-.report-message p {
+.letter-message p {
   margin-bottom: 10px;
 }
 
-.report-message ul, .report-message ol {
+.letter-message ul, .letter-message ol {
   margin-left: 20px;
   margin-bottom: 10px;
 }
 
-.report-message li {
+.letter-message li {
   margin-bottom: 5px;
 }
 
@@ -564,17 +564,17 @@ button {
   align-items: center;
   justify-content: center;
   padding: 24px;
+  transition: opacity 0.3s ease;
+  opacity: 1;
 }
 
-.loading:before {
-  content: "";
-  width: 16px;
-  height: 16px;
-  margin-right: 10px;
-  border-radius: 50%;
-  border: 3px solid #ddd;
-  border-top-color: #4361ee;
-  animation: spin 1s linear infinite;
+.loading.removing {
+  opacity: 0;
+  height: 0;
+  overflow: hidden;
+  padding: 0;
+  margin: 0;
+  transition: opacity 0.3s ease, height 0.3s ease, padding 0.3s ease, margin 0.3s ease;
 }
 
 .error-message {
@@ -640,6 +640,14 @@ button {
   padding: 10px;
 }
 
+.loading-tea .tea-reminder {
+  font-style: italic;
+  color: #6B3FA0;
+  margin: 8px auto;
+  padding: 8px 0;
+  max-width: 300px;
+}
+
 .tea-gif {
   width: 80px;
   height: 80px;
@@ -674,7 +682,7 @@ button {
   list-style: none;
 }
 
-.clarification-questions h4 {
+.clarification-questions h4, .thinking-content h4 {
   margin-top: 8px;
   margin-bottom: 12px;
   font-size: var(--font-size-large);
@@ -683,19 +691,19 @@ button {
   padding-bottom: 8px;
 }
 
-.clarification-questions ul {
+.clarification-questions ul, .thinking-content ul {
   padding-left: 20px;
   margin: 8px 0 16px 0;
 }
 
-.clarification-questions li {
+.clarification-questions li, .thinking-content li {
   margin-bottom: 10px;
   color: #34495e;
   position: relative;
   padding-left: 5px;
 }
 
-.clarification-questions li::before {
+.clarification-questions li::before, .thinking-content li::before {
   content: "•";
   color: #8A4FFF;
   font-weight: bold;
@@ -716,6 +724,17 @@ button {
   width: 95%;
   margin-bottom: 12px;
   word-break: break-word;
+}
+
+.thinking-message {
+  margin-right: auto;
+  width: 95%;
+  margin-bottom: 12px;
+  word-break: break-word;
+  background-color: #f9f5ff;
+  border-radius: 8px;
+  padding: 12px 16px;
+  border-left: 4px solid #9B7ADB;
 }
 
 #questions-modal .modal-content {
@@ -757,6 +776,13 @@ button {
   outline: none;
   border-color: #80bdff;
   box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.tea-reminder {
+  font-style: italic;
+  color: #6B3FA0;
+  margin: 12px 0;
+  padding: 8px 0;
 }
 
 /* Info modal styles */

@@ -7,6 +7,22 @@ PATIENT NOTES:
 REPORT EXCERPT:
 {{report}}
 
+<thinking>
+Analyze the patient notes and report excerpt to identify:
+1. The main condition or injury (e.g., knee pain, back sprain, shoulder impingement)
+2. Key anatomical area affected
+3. Notable treatment approach if mentioned
+4. Patient demographic if relevant
+
+Create a title focusing on the main condition that's specific enough to differentiate it from other cases, but general enough to be understood at a glance.
+
+Examples of good titles:
+- "ACL Tear Rehabilitation"
+- "Chronic Lower Back Pain" 
+- "Post-Surgery Shoulder Recovery"
+- "Tennis Elbow Treatment"
+- "Geriatric Fall Prevention"
+</thinking>
+
 Reply ONLY with the title, nothing else. Keep it short and specific to the condition or treatment.
-Do not include any explanatory text, thinking process, or tags like <thinking>.
 The title must be 30 characters or less to fit in a menu.

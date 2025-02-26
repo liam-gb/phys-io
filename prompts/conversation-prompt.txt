@@ -1,12 +1,22 @@
-# Conversation Context for Report Update
+# Conversation Context for Letter Update
 
 {{main_prompt}}
 
 ## Additional Conversation History
-The following represents feedback and further information provided after the initial report generation:
+The following represents feedback and further information provided after the initial letter generation:
 
 {{conversation}}
 
-Based on both the original instructions above and this additional conversation, please update the physiotherapy report accordingly.
+<thinking>
+Analyze the initial instructions, conversation, and feedback to identify:
+- What key changes or additions are requested
+- Any specific information that needs to be corrected or updated
+- Any format changes requested
+- Important details from answers to previous clarification questions
 
-IMPORTANT: Respond ONLY with the final report text. Do not include any explanations, your reasoning process, or any text outside the report itself.
+Create an updated letter that incorporates all the feedback while maintaining professional tone and format.
+</thinking>
+
+Based on both the original instructions above and this additional conversation, please update the physiotherapy letter accordingly.
+
+IMPORTANT: Put any analysis or reasoning in a <thinking>...</thinking> tag, and place the final letter outside of that tag.
