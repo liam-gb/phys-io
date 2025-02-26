@@ -21,7 +21,9 @@ contextBridge.exposeInMainWorld('api', {
     getModels: () => ipcRenderer.invoke('get-ollama-models'),
     setModel: (model) => ipcRenderer.invoke('set-ollama-model', model),
     getPromptFile: () => ipcRenderer.invoke('get-prompt-file'),
-    setPromptFile: (promptFile) => ipcRenderer.invoke('set-prompt-file', promptFile)
+    setPromptFile: (promptFile) => ipcRenderer.invoke('set-prompt-file', promptFile),
+    getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
+    evaluateModelCompatibility: (modelName) => ipcRenderer.invoke('evaluate-model-compatibility', modelName)
   },
   
   // File operations

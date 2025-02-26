@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Physiotherapy Report Generator</title>
+  <title>Phys.IO</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -29,10 +29,15 @@
           <button id="toggle-sidebar-btn" class="icon-button" title="Toggle Sidebar">
             <i class="fa-solid fa-bars"></i>
           </button>
-          <h1>Phys.IO</h1>
-          <button id="info-btn" class="icon-button" title="About Phys.IO">
-            <i class="fa-solid fa-circle-info"></i>
-          </button>
+          <div class="app-title-container">
+            <h1>Phys.IO</h1>
+            <div class="tooltip-container">
+              <span class="info-icon" title="About Phys.IO"><i class="fa-solid fa-circle-info"></i></span>
+              <div id="app-info-tooltip" class="tooltip-content markdown-content">
+                Loading information...
+              </div>
+            </div>
+          </div>
         </div>
         <div class="status-bar">
           <div class="status-indicator">
@@ -40,10 +45,13 @@
             <span id="status-text">Checking Ollama...</span>
           </div>
           <div class="model-selector">
-            <label for="model-select">Model:</label>
-            <select id="model-select" disabled>
-              <option value="">Loading models...</option>
-            </select>
+            <div class="model-select-wrapper">
+              <label for="model-select">Model:</label>
+              <select id="model-select" disabled>
+                <option value="">Loading models...</option>
+              </select>
+              <div id="model-status" class="model-status">Loading...</div>
+            </div>
           </div>
         </div>
       </header>
@@ -70,8 +78,6 @@
       </main>
 
       <footer>
-        <p>Built with Electron <span id="electron-version"></span> | Node <span id="node-version"></span></p>
-        <p class="privacy-notice">⚠️ For patient privacy, this application works offline</p>
       </footer>
     </div>
   </div>
@@ -95,24 +101,6 @@
     </div>
   </div>
   
-  <!-- Info Modal -->
-  <div id="info-modal" class="modal hidden">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3>About Phys.IO</h3>
-        <button id="close-info-modal-btn" class="icon-button">
-          <i class="fa-solid fa-times"></i>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div id="info-content" class="info-content"></div>
-        <div class="modal-tabs">
-          <button id="intro-tab" class="info-tab active">About</button>
-          <button id="disclaimer-tab" class="info-tab">Disclaimer</button>
-        </div>
-      </div>
-    </div>
-  </div>
   
   <script src="renderer.js"></script>
 </body>

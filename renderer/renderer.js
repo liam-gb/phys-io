@@ -57,6 +57,15 @@ async function initializeApp() {
       await loadSession(latestSession.dataset.id);
     }
   }
+  
+  // Make sure to update the model compatibility display after initialization
+  // This ensures the status is visible on startup
+  if (modelSelect.value) {
+    await updateModelCompatibilityDisplay(modelSelect.value);
+  }
+  
+  // Load app info for tooltip
+  await loadAppInfo();
 }
 
 // Check Ollama connection
@@ -87,10 +96,60 @@ function setDisconnectedState() {
   modelSelect.disabled = true;
 }
 
+// System information
+let systemInfo = null;
+let modelCompatibilityInfo = {};
+
+// Get system info at startup
+async function getSystemInfo() {
+  try {
+    systemInfo = await window.api.ollama.getSystemInfo();
+    console.log('System info:', systemInfo);
+    
+    // Update system info in the tooltip
+    const systemInfoElement = document.getElementById('system-info');
+    if (systemInfoElement && systemInfo) {
+      const cpuInfo = systemInfo.cpu.isAppleSilicon ? 
+        `Apple ${systemInfo.cpu.model}` : 
+        systemInfo.cpu.model;
+      
+      systemInfoElement.textContent = `${cpuInfo}, ${systemInfo.memory.total}GB RAM`;
+    }
+    
+    return systemInfo;
+  } catch (error) {
+    console.error('Failed to get system info:', error);
+    return null;
+  }
+}
+
+// Evaluate model compatibility
+async function evaluateModelCompatibility(modelName) {
+  try {
+    if (!modelCompatibilityInfo[modelName]) {
+      modelCompatibilityInfo[modelName] = await window.api.ollama.evaluateModelCompatibility(modelName);
+    }
+    return modelCompatibilityInfo[modelName];
+  } catch (error) {
+    console.error(`Failed to evaluate compatibility for ${modelName}:`, error);
+    return {
+      modelSizeInB: null,
+      comfortLevel: 'Unknown',
+      message: 'Could not determine compatibility',
+      loadingMessage: null
+    };
+  }
+}
+
 // Load available models from Ollama
 async function loadModels() {
   try {
     const models = await window.api.ollama.getModels();
+    
+    // Get system info first if not already available
+    if (!systemInfo) {
+      await getSystemInfo();
+    }
     
     // Save current selection if it exists
     const currentSelection = modelSelect.value;
@@ -107,10 +166,40 @@ async function loadModels() {
       // Set current model
       currentSession.model = 'deepseek-r1:8b';
     } else {
-      models.forEach(model => {
+      // Process each model with compatibility info
+      const modelPromises = models.map(async (model) => {
+        const compatibility = await evaluateModelCompatibility(model);
+        return { name: model, compatibility };
+      });
+      
+      // Wait for all compatibility evaluations
+      const modelData = await Promise.all(modelPromises);
+      
+      // Add models to dropdown
+      modelData.forEach(({ name, compatibility }) => {
         const option = document.createElement('option');
-        option.value = model;
-        option.textContent = model;
+        option.value = name;
+        
+        // Display the raw model name
+        let displayText = name;
+        
+        // Add compatibility indicator
+        if (compatibility.comfortLevel === 'Easy') {
+          displayText += ' ✓';
+        } else if (compatibility.comfortLevel === 'Difficult') {
+          displayText += ' ⚠️';
+        } else if (compatibility.comfortLevel === 'Impossible') {
+          displayText += ' ❌';
+        }
+        
+        option.textContent = displayText;
+        
+        // Set tooltip with compatibility message
+        option.title = compatibility.message;
+        
+        // Add data attributes for compatibility info
+        option.dataset.comfortLevel = compatibility.comfortLevel;
+        
         modelSelect.appendChild(option);
       });
       
@@ -128,6 +217,9 @@ async function loadModels() {
     
     // Update the model in Ollama client
     window.api.ollama.setModel(currentSession.model);
+    
+    // Update compatibility info display for selected model
+    updateModelCompatibilityDisplay(currentSession.model);
   } catch (error) {
     console.error('Failed to load models:', error);
     
@@ -141,6 +233,35 @@ async function loadModels() {
     currentSession.model = 'deepseek-r1:8b';
     modelSelect.disabled = false;
   }
+}
+
+// Update compatibility info display
+async function updateModelCompatibilityDisplay(modelName) {
+  // Get compatibility info if not already available
+  const compatInfo = await evaluateModelCompatibility(modelName);
+  
+  // Update model status display if it exists
+  const modelStatusElement = document.getElementById('model-status');
+  if (modelStatusElement) {
+    // Remove previous classes
+    modelStatusElement.classList.remove('easy', 'difficult', 'impossible');
+    // Add new class
+    modelStatusElement.classList.add(compatInfo.comfortLevel.toLowerCase());
+    
+    // Use simpler messages as requested
+    let message = '';
+    if (compatInfo.comfortLevel === 'Easy') {
+      message = 'Should run fine';
+    } else if (compatInfo.comfortLevel === 'Difficult') {
+      message = 'Will be slow';
+    } else if (compatInfo.comfortLevel === 'Impossible') {
+      message = 'Too large';
+    }
+    
+    // Update message
+    modelStatusElement.textContent = message;
+  }
+  
 }
 
 // Handle sending messages
@@ -165,9 +286,6 @@ async function sendMessage() {
   if (currentSession.isInitialMessage) {
     await generateInitialReport(text);
     currentSession.isInitialMessage = false;
-    
-    // Add system message prompting for feedback
-    addSystemMessage("Your report is ready. Please provide any feedback to improve it.");
     
     // Generate a meaningful title for the session
     await generateSessionTitle();
@@ -235,9 +353,6 @@ Yours sincerely,
 
     const response = await window.api.ollama.generateConversationalResponse(reportPrompt);
     
-    // Remove loading message
-    removeLoadingMessage(loadingId);
-    
     if (response) {
       // Try to extract patient name from report
       const patientNameMatch = response.match(/Patient(?:\sName)?:\s*([A-Za-z\s]+)(?:,|\n|$)/i);
@@ -260,9 +375,11 @@ Yours sincerely,
       // Update current report index
       currentSession.currentReportIndex = currentSession.messages.length - 1;
       
-      // Generate clarification questions
-      generateClarificationQuestions(notes, response);
+      // Generate clarification questions - don't remove loading message yet
+      await generateClarificationQuestions(notes, response);
     } else {
+      // Remove loading message if we have an error
+      removeLoadingMessage(loadingId);
       addErrorMessage("Failed to generate report. Please check if Ollama is running.");
     }
   } catch (error) {
@@ -274,14 +391,13 @@ Yours sincerely,
 
 // Generate clarification questions based on the notes and generated report
 async function generateClarificationQuestions(notes, reportText) {
-  // Show loading message for questions generation
-  const loadingId = addLoadingMessage();
-  
   try {
     const questions = await window.api.ollama.generateClarificationQuestions(notes, reportText);
     
-    // Remove loading message
-    removeLoadingMessage(loadingId);
+    // Find and remove all loading messages as we're now finished with the entire generation process
+    document.querySelectorAll('.message.system-message.loading').forEach(el => {
+      el.remove();
+    });
     
     if (questions && questions.length > 0) {
       // Add a message indicating we have questions
@@ -329,9 +445,17 @@ async function generateClarificationQuestions(notes, reportText) {
         isQuestions: true,
         questions: questions
       });
+    } else {
+      // If no questions were generated, still remove any loading messages
+      document.querySelectorAll('.message.system-message.loading').forEach(el => {
+        el.remove();
+      });
     }
   } catch (error) {
-    removeLoadingMessage(loadingId);
+    // Make sure to remove all loading messages if there's an error
+    document.querySelectorAll('.message.system-message.loading').forEach(el => {
+      el.remove();
+    });
     console.error('Error generating clarification questions:', error);
   }
 }
@@ -452,8 +576,10 @@ async function submitClarificationAnswers(answers) {
     // Generate updated report
     const updatedReport = await window.api.ollama.generateReportWithClarifications(initialNotes, answers);
     
-    // Remove loading message
-    removeLoadingMessage(loadingId);
+    // Always remove all loading messages when done
+    document.querySelectorAll('.message.system-message.loading').forEach(el => {
+      el.remove();
+    });
     
     if (updatedReport) {
       // Add the updated report to the conversation
@@ -476,8 +602,10 @@ async function submitClarificationAnswers(answers) {
       addErrorMessage("Failed to generate updated report.");
     }
   } catch (error) {
-    // Remove loading message
-    removeLoadingMessage(loadingId);
+    // Remove all loading messages
+    document.querySelectorAll('.message.system-message.loading').forEach(el => {
+      el.remove();
+    });
     addErrorMessage(`Error: ${error.message}`);
   }
 }
@@ -493,8 +621,10 @@ async function generateResponse() {
     
     const response = await window.api.ollama.generateConversationalResponse(prompt);
     
-    // Remove loading message
-    removeLoadingMessage(loadingId);
+    // Always remove all loading messages when done
+    document.querySelectorAll('.message.system-message.loading').forEach(el => {
+      el.remove();
+    });
     
     if (response) {
       // Add the response to the conversation
@@ -514,8 +644,10 @@ async function generateResponse() {
       addErrorMessage("Failed to generate response.");
     }
   } catch (error) {
-    // Remove loading message
-    removeLoadingMessage(loadingId);
+    // Remove all loading messages
+    document.querySelectorAll('.message.system-message.loading').forEach(el => {
+      el.remove();
+    });
     addErrorMessage(`Error: ${error.message}`);
   }
 }
@@ -717,7 +849,29 @@ async function loadSession(sessionId) {
             addMessageToUI('system', message.content);
           }
         } else if (message.role === 'system') {
-          addSystemMessage(message.content);
+          if (message.isQuestions && message.questions) {
+            // First add the system message indicating there are questions
+            addSystemMessage("I have some clarification questions that may help improve this report:");
+            
+            // Then create the questions UI
+            const questionsHtml = `
+              <div class="clarification-questions">
+                <h4>Clarification Questions:</h4>
+                <ul>
+                  ${message.questions.map(q => `<li>${q.replace(/^\d+\.\s*/, '')}</li>`).join('')}
+                </ul>
+                <div class="clarification-actions">
+                  <button class="secondary-button small-button answer-questions-btn">
+                    <i class="fa-solid fa-reply"></i> Answer Questions
+                  </button>
+                </div>
+              </div>
+            `;
+            
+            addMessageToUI('questions', questionsHtml);
+          } else {
+            addSystemMessage(message.content);
+          }
         }
       });
       
@@ -946,12 +1100,56 @@ function addSystemMessage(content) {
   scrollToBottom();
 }
 
-function addLoadingMessage() {
+async function addLoadingMessage() {
   const loadingId = 'loading-' + Date.now();
   const loadingDiv = document.createElement('div');
   loadingDiv.className = 'message system-message loading';
   loadingDiv.id = loadingId;
-  loadingDiv.textContent = 'Generating response...';
+  
+  // Check model compatibility for custom loading message
+  const compatibility = await evaluateModelCompatibility(currentSession.model);
+  
+  if (compatibility.comfortLevel === 'Difficult' && compatibility.loadingMessage) {
+    // For difficult models, show tea message with animated SVG
+    loadingDiv.innerHTML = `
+      <div class="loading-tea">
+        <div class="tea-animation">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="80" height="80">
+            <!-- Tea cup -->
+            <g>
+              <path d="M20,40 L80,40 L70,80 L30,80 Z" fill="#fff" stroke="#333" stroke-width="2"/>
+              <path d="M25,40 L75,40 L67,75 L33,75 Z" fill="#f9d5ba" stroke="none">
+                <animate attributeName="fill" values="#f9d5ba;#d4a76a;#f9d5ba" dur="3s" repeatCount="indefinite" />
+              </path>
+              
+              <!-- Tea handle -->
+              <path d="M78,50 Q90,50 90,60 Q90,70 80,70" fill="none" stroke="#333" stroke-width="2"/>
+              
+              <!-- Steam animation -->
+              <path d="M40,30 Q45,20 50,30 Q55,20 60,30" fill="none" stroke="#aaa" stroke-width="2" opacity="0.7">
+                <animate attributeName="d" values="M40,30 Q45,20 50,30 Q55,20 60,30;M40,20 Q45,10 50,20 Q55,10 60,20;M40,30 Q45,20 50,30 Q55,20 60,30" dur="3s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.7;0.3;0.7" dur="3s" repeatCount="indefinite" />
+              </path>
+              
+              <path d="M35,25 Q40,15 45,25" fill="none" stroke="#aaa" stroke-width="1.5" opacity="0.5">
+                <animate attributeName="d" values="M35,25 Q40,15 45,25;M35,15 Q40,5 45,15;M35,25 Q40,15 45,25" dur="2.5s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.5;0.2;0.5" dur="2.5s" repeatCount="indefinite" />
+              </path>
+              
+              <path d="M55,25 Q60,15 65,25" fill="none" stroke="#aaa" stroke-width="1.5" opacity="0.5">
+                <animate attributeName="d" values="M55,25 Q60,15 65,25;M55,15 Q60,5 65,15;M55,25 Q60,15 65,25" dur="2.8s" repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0.5;0.2;0.5" dur="2.8s" repeatCount="indefinite" />
+              </path>
+            </g>
+          </svg>
+        </div>
+        <p>${compatibility.loadingMessage}</p>
+      </div>
+    `;
+  } else {
+    // Default loading message
+    loadingDiv.textContent = 'Generating response...';
+  }
   
   conversationHistory.appendChild(loadingDiv);
   scrollToBottom();
@@ -1157,13 +1355,38 @@ function hideModal() {
   confirmModal.classList.add('hidden');
 }
 
+// Simple markdown parser function
+function renderMarkdown(text) {
+  if (!text) return '';
+  
+  // Convert headers
+  text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  
+  // Convert lists
+  text = text.replace(/^- (.+)$/gm, '<li>$1</li>');
+  text = text.replace(/(<li>.+<\/li>\n)+/g, '<ul>$&</ul>');
+  
+  // Convert paragraphs
+  text = text.replace(/^([^<\n].+)$/gm, '<p>$1</p>');
+  
+  // Convert bold and italic
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  
+  // Convert links
+  text = text.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>');
+  
+  return text;
+}
+
 // Info Modal
 const infoBtn = document.getElementById('info-btn');
 const infoModal = document.getElementById('info-modal');
 const closeInfoModalBtn = document.getElementById('close-info-modal-btn');
-const infoContent = document.getElementById('info-content');
-const introTab = document.getElementById('intro-tab');
-const disclaimerTab = document.getElementById('disclaimer-tab');
+const introContent = document.getElementById('intro-content');
+const disclaimerContent = document.getElementById('disclaimer-content');
 
 // Load and display documentation
 async function loadDocContent(filename) {
@@ -1179,23 +1402,20 @@ async function loadDocContent(filename) {
   }
 }
 
-function showInfoModal(tabName = 'intro') {
+async function showInfoModal() {
   infoModal.classList.remove('hidden');
   
-  // Set active tab
-  introTab.classList.remove('active');
-  disclaimerTab.classList.remove('active');
-  
-  if (tabName === 'intro') {
-    introTab.classList.add('active');
-    loadDocContent('intro.txt').then(content => {
-      infoContent.textContent = content;
-    });
-  } else if (tabName === 'disclaimer') {
-    disclaimerTab.classList.add('active');
-    loadDocContent('disclaimer.txt').then(content => {
-      infoContent.textContent = content;
-    });
+  // Load both content sections
+  try {
+    // Load intro content
+    const introText = await loadDocContent('intro.txt');
+    introContent.innerHTML = renderMarkdown(introText);
+    
+    // Load disclaimer content
+    const disclaimerText = await loadDocContent('disclaimer.txt');
+    disclaimerContent.innerHTML = renderMarkdown(disclaimerText);
+  } catch (error) {
+    console.error('Error loading documentation:', error);
   }
 }
 
@@ -1212,18 +1432,26 @@ userInput.addEventListener('input', () => {
   sendBtn.disabled = userInput.value.trim() === '';
 });
 
-// Info modal event listeners
-infoBtn.addEventListener('click', () => showInfoModal('intro'));
-closeInfoModalBtn.addEventListener('click', hideInfoModal);
-introTab.addEventListener('click', () => showInfoModal('intro'));
-disclaimerTab.addEventListener('click', () => showInfoModal('disclaimer'));
-
-// Close modal when clicking outside
-infoModal.addEventListener('click', (e) => {
-  if (e.target === infoModal) {
-    hideInfoModal();
+// Load app info for the tooltip
+async function loadAppInfo() {
+  try {
+    // Get the tooltip element
+    const appInfoTooltip = document.getElementById('app-info-tooltip');
+    if (!appInfoTooltip) return;
+    
+    // Load both intro and disclaimer content
+    const introText = await loadDocContent('intro.txt');
+    const disclaimerText = await loadDocContent('disclaimer.txt');
+    
+    // Combine the content with a horizontal rule separator
+    const combinedContent = introText + '\n\n---\n\n**IMPORTANT DISCLAIMER**\n\n' + disclaimerText;
+    
+    // Render as markdown and update the tooltip
+    appInfoTooltip.innerHTML = renderMarkdown(combinedContent);
+  } catch (error) {
+    console.error('Error loading app info:', error);
   }
-});
+}
 
 userInput.addEventListener('keydown', (e) => {
   // Send on Ctrl+Enter or Command+Enter
@@ -1249,10 +1477,22 @@ confirmModal.addEventListener('click', (e) => {
   }
 });
 
-modelSelect.addEventListener('change', () => {
+modelSelect.addEventListener('change', async () => {
   const newModel = modelSelect.value;
   currentSession.model = newModel;
   window.api.ollama.setModel(newModel);
+  
+  // Show loading state
+  const modelStatusElement = document.getElementById('model-status');
+  if (modelStatusElement) {
+    modelStatusElement.textContent = "Checking compatibility...";
+    modelStatusElement.style.display = 'inline-block';
+    modelStatusElement.className = 'model-status';
+  }
+  
+  // Update compatibility info display
+  await updateModelCompatibilityDisplay(newModel);
+  
   scheduleAutosave();
 });
 

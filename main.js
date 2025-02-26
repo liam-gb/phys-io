@@ -122,6 +122,30 @@ ipcMain.handle('set-prompt-file', async (event, promptFile) => {
   return true;
 });
 
+ipcMain.handle('get-system-info', async () => {
+  try {
+    return await ollamaClient.getSystemInfo();
+  } catch (error) {
+    console.error('Failed to get system info:', error);
+    return null;
+  }
+});
+
+ipcMain.handle('evaluate-model-compatibility', async (event, modelName) => {
+  try {
+    const systemInfo = await ollamaClient.getSystemInfo();
+    return ollamaClient.evaluateModelCompatibility(modelName, systemInfo);
+  } catch (error) {
+    console.error('Failed to evaluate model compatibility:', error);
+    return {
+      modelSizeInB: null,
+      comfortLevel: 'Unknown',
+      message: 'Could not determine compatibility.',
+      loadingMessage: null
+    };
+  }
+});
+
 // Helper to generate a unique ID
 function generateUniqueId() {
   return crypto.randomBytes(16).toString('hex');

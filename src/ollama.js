@@ -49,7 +49,6 @@ class OllamaClient {
     // Get the prompt file from configuration - default to v2.txt
     this.promptFile = store.get('promptFile', 'v2.txt');
     
-    console.log(`Using prompt file: ${this.promptFile}`);
   }
 
   // Helper method to read prompt files
@@ -262,6 +261,196 @@ At the end of your report, include a section with the header <questions> that li
     } catch (error) {
       return false;
     }
+  }
+
+  async getSystemInfo() {
+    try {
+      const os = require('os');
+      const cpuInfo = os.cpus()[0];
+      const cpuModel = cpuInfo.model;
+      const isAppleSilicon = cpuModel.includes('Apple');
+      const totalRam = Math.round(os.totalmem() / (1024 * 1024 * 1024)); // GB
+      
+      return {
+        cpu: {
+          model: cpuModel,
+          cores: os.cpus().length,
+          isAppleSilicon
+        },
+        memory: {
+          total: totalRam,
+          free: Math.round(os.freemem() / (1024 * 1024 * 1024))  // GB
+        },
+        platform: os.platform(),
+        arch: os.arch()
+      };
+    } catch (error) {
+      console.error('Error getting system info:', error);
+      return null;
+    }
+  }
+  
+  estimateModelParameters(modelName) {
+    // Extract model size from name (look for patterns like 7b, 13b, etc.)
+    let modelSizeInB = null;
+    const lowerModelName = modelName.toLowerCase();
+    
+    // First try to extract explicit parameter count
+    const sizeMatch = lowerModelName.match(/[:-](\d+)b/i);
+    
+    if (sizeMatch && sizeMatch[1]) {
+      modelSizeInB = parseInt(sizeMatch[1]);
+    } else {
+      // Known specific models and their parameter counts
+      const specificModels = {
+        'llama3.2': 3,
+        'llama3.2latest': 3,
+        'llama3.1': 8,
+        'llama3.1latest': 8,
+        'llama3.2-1b': 1
+      };
+      
+      // Check for exact match in specific models
+      for (const [model, size] of Object.entries(specificModels)) {
+        if (lowerModelName.includes(model.toLowerCase())) {
+          modelSizeInB = size;
+          break;
+        }
+      }
+      
+      // If still not found, use model family defaults
+      if (!modelSizeInB) {
+        // Default sizes for models without explicit size in name
+        const defaultSizes = {
+          'llama2': 7,
+          'llama3': 8,
+          'mistral': 7,
+          'mixtral': 47,
+          'codellama': 7,
+          'wizardcoder': 13,
+          'vicuna': 7,
+          'zephyr': 7,
+          'phi': 2,
+          'gemma': 2,
+          'deepseek': 8
+        };
+        
+        // Try to match the model family
+        for (const [family, size] of Object.entries(defaultSizes)) {
+          if (lowerModelName.includes(family.toLowerCase())) {
+            modelSizeInB = size;
+            break;
+          }
+        }
+      }
+      
+      // Default to 7B if we couldn't identify
+      if (!modelSizeInB) {
+        modelSizeInB = 7;
+      }
+    }
+    
+    
+    return modelSizeInB;
+  }
+  
+  evaluateModelCompatibility(modelName, systemInfo) {
+    // Get model size in billions of parameters
+    const modelSizeInB = this.estimateModelParameters(modelName);
+    
+    // Get hardware info
+    const ram = systemInfo.memory.total;
+    const isAppleSilicon = systemInfo.cpu.isAppleSilicon;
+    
+    // Simple compatibility matrix
+    // Format: [min_size, max_size]
+    const compatMatrix = {
+      // Apple Silicon machines
+      appleSilicon: {
+        // RAM ranges (in GB)
+        8: {
+          easy: [0, 7],          // 0-7B models run easily on 8GB RAM
+          difficult: [7, 13],    // 7-13B models run with difficulty on 8GB RAM
+          // anything larger is impossible
+        },
+        16: {
+          easy: [0, 13],         // 0-13B models run easily on 16GB RAM
+          difficult: [13, 33],   // 13-33B models run with difficulty on 16GB RAM
+          // anything larger is impossible
+        },
+        32: {
+          easy: [0, 33],         // 0-33B models run easily on 32GB RAM
+          difficult: [33, 70],   // 33-70B models run with difficulty on 32GB RAM
+          // anything larger is impossible
+        },
+        64: {
+          easy: [0, 70],         // 0-70B models run easily on 64GB RAM
+          difficult: [70, 100],  // 70-100B models run with difficulty on 64GB RAM
+          // anything larger is impossible
+        }
+      },
+      // Other processors (Intel, AMD, etc.)
+      other: {
+        // RAM ranges (in GB)
+        8: {
+          easy: [0, 3],          // 0-3B models run easily on 8GB RAM
+          difficult: [3, 7],     // 3-7B models run with difficulty on 8GB RAM
+          // anything larger is impossible
+        },
+        16: {
+          easy: [0, 7],          // 0-7B models run easily on 16GB RAM
+          difficult: [7, 13],    // 7-13B models run with difficulty on 16GB RAM
+          // anything larger is impossible
+        },
+        32: {
+          easy: [0, 13],         // 0-13B models run easily on 32GB RAM
+          difficult: [13, 33],   // 13-33B models run with difficulty on 32GB RAM
+          // anything larger is impossible
+        },
+        64: {
+          easy: [0, 33],         // 0-33B models run easily on 64GB RAM
+          difficult: [33, 70],   // 33-70B models run with difficulty on 64GB RAM
+          // anything larger is impossible
+        }
+      }
+    };
+    
+    // Determine architecture type
+    const archType = isAppleSilicon ? 'appleSilicon' : 'other';
+    
+    // Find the right RAM category
+    let ramCategory;
+    if (ram <= 8) ramCategory = 8;
+    else if (ram <= 16) ramCategory = 16;
+    else if (ram <= 32) ramCategory = 32;
+    else ramCategory = 64;
+    
+    // Default values
+    let comfortLevel = 'Easy';
+    let message = 'No sweat, your machine should run this just fine.';
+    let loadingMessage = null;
+    
+    // Determine comfort level based on matrix
+    const ranges = compatMatrix[archType][ramCategory];
+    
+    if (modelSizeInB >= ranges.easy[0] && modelSizeInB < ranges.easy[1]) {
+      comfortLevel = 'Easy';
+      message = 'No sweat, your machine should run this just fine.';
+    } else if (modelSizeInB >= ranges.difficult[0] && modelSizeInB < ranges.difficult[1]) {
+      comfortLevel = 'Difficult';
+      message = "It'll run, but please be patient.";
+      loadingMessage = 'This could take a few minutes. Plenty of time for tea.';
+    } else {
+      comfortLevel = 'Impossible';
+      message = 'Sorry, your machine is not cut out for this model size.';
+    }
+    
+    return {
+      modelSizeInB,
+      comfortLevel,
+      message,
+      loadingMessage
+    };
   }
 
   async getAvailableModels() {
