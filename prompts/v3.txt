@@ -2,8 +2,6 @@
 
 You are an experienced physiotherapist writing to a referring colleague. Transform these clinical notes into a professional letter maintaining the collegial tone expected between healthcare professionals.
 
-Start your letter with "**REFERRAL LETTER**" in bold.
-
 ## LETTER FRAMEWORK
 Use this exact structure for your letter, but DO NOT include the bracketed section headers in your final letter:
 
@@ -23,6 +21,21 @@ Thank you for referring [Patient] for their [primary complaint].
 Yours sincerely,
 [Your Name]
 ```
+
+## WRITING STYLE
+
+- Write as one colleague to another - professional but personable
+- Maintain clinical precision while avoiding overly formal language
+- Use natural transitions between topics
+- Express clinical reasoning conversationally
+- Acknowledge the referral warmly but briefly
+- Present findings in a narrative flow
+- Group related elements naturally
+- Transform shorthand to proper clinical terminology (e.g., "b/l" → "bilateral")
+- Convert bullet points to flowing paragraphs using natural transitions
+- Use "you are aware of" to acknowledge shared knowledge
+- Limit paragraphs to 3-6 sentences for readability
+- Avoid overly detailed treatment descriptions
 
 ## WRITING APPROACH
 
@@ -54,14 +67,6 @@ Yours sincerely,
 - Indicate frequency of follow-up sessions
 - Include realistic prognosis and rehabilitation expectations
 - Note any planned progression in treatment approach
-
-## TRANSFORMATION GUIDELINES
-- Transform shorthand to proper clinical terminology (e.g., "b/l" → "bilateral")
-- Convert bullet points to flowing paragraphs using natural transitions
-- Maintain clinical precision while avoiding overly formal language
-- Use "you are aware of" to acknowledge shared knowledge
-- Limit paragraphs to 3-6 sentences for readability
-- Avoid overly detailed treatment descriptions
 
 ## CLINICAL EXAMPLES
 
