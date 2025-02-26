@@ -18,6 +18,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    title: 'Phys.IO',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -26,6 +27,7 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  mainWindow.setTitle('Phys.IO');
   
   // Only open DevTools in development
   if (process.env.NODE_ENV === 'development') {
@@ -270,5 +272,18 @@ ipcMain.handle('load-notes', async () => {
   } catch (error) {
     dialog.showErrorBox('Error', `Failed to load notes: ${error.message}`);
     return null;
+  }
+});
+
+ipcMain.handle('load-doc-file', async (event, filename) => {
+  try {
+    const docPath = path.join(__dirname, 'docs', filename);
+    if (fs.existsSync(docPath)) {
+      return fs.readFileSync(docPath, 'utf8');
+    }
+    return `Error: Document file "${filename}" not found`;
+  } catch (error) {
+    console.error(`Error loading doc file ${filename}:`, error);
+    return `Error: ${error.message}`;
   }
 });

@@ -1157,6 +1157,52 @@ function hideModal() {
   confirmModal.classList.add('hidden');
 }
 
+// Info Modal
+const infoBtn = document.getElementById('info-btn');
+const infoModal = document.getElementById('info-modal');
+const closeInfoModalBtn = document.getElementById('close-info-modal-btn');
+const infoContent = document.getElementById('info-content');
+const introTab = document.getElementById('intro-tab');
+const disclaimerTab = document.getElementById('disclaimer-tab');
+
+// Load and display documentation
+async function loadDocContent(filename) {
+  try {
+    const content = await window.api.files.loadDocFile(filename);
+    if (content.startsWith('Error:')) {
+      return content;
+    }
+    return content;
+  } catch (error) {
+    console.error(`Error loading doc content for ${filename}:`, error);
+    return `Error loading content: ${error.message}`;
+  }
+}
+
+function showInfoModal(tabName = 'intro') {
+  infoModal.classList.remove('hidden');
+  
+  // Set active tab
+  introTab.classList.remove('active');
+  disclaimerTab.classList.remove('active');
+  
+  if (tabName === 'intro') {
+    introTab.classList.add('active');
+    loadDocContent('intro.txt').then(content => {
+      infoContent.textContent = content;
+    });
+  } else if (tabName === 'disclaimer') {
+    disclaimerTab.classList.add('active');
+    loadDocContent('disclaimer.txt').then(content => {
+      infoContent.textContent = content;
+    });
+  }
+}
+
+function hideInfoModal() {
+  infoModal.classList.add('hidden');
+}
+
 // Event listeners
 document.addEventListener('DOMContentLoaded', initializeApp);
 
@@ -1164,6 +1210,19 @@ toggleSidebarBtn.addEventListener('click', toggleSidebar);
 sendBtn.addEventListener('click', sendMessage);
 userInput.addEventListener('input', () => {
   sendBtn.disabled = userInput.value.trim() === '';
+});
+
+// Info modal event listeners
+infoBtn.addEventListener('click', () => showInfoModal('intro'));
+closeInfoModalBtn.addEventListener('click', hideInfoModal);
+introTab.addEventListener('click', () => showInfoModal('intro'));
+disclaimerTab.addEventListener('click', () => showInfoModal('disclaimer'));
+
+// Close modal when clicking outside
+infoModal.addEventListener('click', (e) => {
+  if (e.target === infoModal) {
+    hideInfoModal();
+  }
 });
 
 userInput.addEventListener('keydown', (e) => {

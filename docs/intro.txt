@@ -1,0 +1,12 @@
+# Phys.IO
+
+Phys.IO is a proof-of-concept desktop app that converts medical notes to professional physiotherapy letters using local AI.
+
+## Key Features
+
+- **Local Processing**: All data stays on your device via Ollama
+- **Privacy-First**: Patient information never leaves your computer
+- **Structured Output**: Transforms clinical shorthand into readable, professional letters
+- **Clarification System**: Identifies missing information to improve outputs
+
+Phys.IO is designed for demonstration purposes only and is NOT intended for clinical use.

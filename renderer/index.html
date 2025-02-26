@@ -29,7 +29,10 @@
           <button id="toggle-sidebar-btn" class="icon-button" title="Toggle Sidebar">
             <i class="fa-solid fa-bars"></i>
           </button>
-          <h1>Physio Report Generator</h1>
+          <h1>Phys.IO</h1>
+          <button id="info-btn" class="icon-button" title="About Phys.IO">
+            <i class="fa-solid fa-circle-info"></i>
+          </button>
         </div>
         <div class="status-bar">
           <div class="status-indicator">
@@ -88,6 +91,25 @@
       <div class="modal-footer">
         <button id="cancel-modal-btn" class="secondary-button">Cancel</button>
         <button id="confirm-modal-btn" class="primary-button danger">Confirm</button>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Info Modal -->
+  <div id="info-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>About Phys.IO</h3>
+        <button id="close-info-modal-btn" class="icon-button">
+          <i class="fa-solid fa-times"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div id="info-content" class="info-content"></div>
+        <div class="modal-tabs">
+          <button id="intro-tab" class="info-tab active">About</button>
+          <button id="disclaimer-tab" class="info-tab">Disclaimer</button>
+        </div>
       </div>
     </div>
   </div>
