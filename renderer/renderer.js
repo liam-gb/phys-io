@@ -44,6 +44,9 @@ async function initializeApp() {
   await checkOllamaConnection();
   await loadSessions();
   
+  // Show sidebar by default
+  sidebar.classList.add('open');
+  
   // Create new session if none exists
   if (sessionsList.innerHTML === '<div class="empty-state">No saved sessions</div>') {
     startNewSession();
@@ -644,7 +647,7 @@ async function generateSessionTitle() {
     
     const titlePrompt = `
 You are helping to generate a short, descriptive title for a physiotherapy session.
-Based on the following information, create a concise title (4-7 words) that summarizes the key issue or treatment:
+Based on the following information, create a concise title (3-5 words) that summarizes the key issue or treatment:
 
 PATIENT NOTES:
 ${initialNotes.substring(0, 500)}
@@ -653,14 +656,22 @@ REPORT EXCERPT:
 ${firstReport.substring(0, 300)}
 
 Reply ONLY with the title, nothing else. Keep it short and specific to the condition or treatment.
+Do not include any explanatory text, thinking process, or tags like <thinking>.
+The title must be 30 characters or less to fit in a menu.
 `;
 
     const title = await window.api.ollama.generateConversationalResponse(titlePrompt);
     
     if (title && title.length > 0) {
-      // Clean up title - remove quotes and limit length
-      const cleanTitle = title.replace(/["']/g, '').trim();
-      currentSession.title = cleanTitle.substring(0, 50);
+      // Clean up title - remove quotes, tags, and limit length
+      let cleanTitle = title.replace(/["']/g, '').trim();
+      // Remove any <thinking> tags and their content
+      cleanTitle = cleanTitle.replace(/<thinking>[\s\S]*?<\/thinking>/g, '');
+      // Remove any other tags
+      cleanTitle = cleanTitle.replace(/<[^>]*>/g, '');
+      // Ensure title is brief enough for sidebar (max 30 chars)
+      cleanTitle = cleanTitle.substring(0, 30);
+      currentSession.title = cleanTitle;
       updateSessionInSidebar();
       
       // Schedule autosave to persist the title
