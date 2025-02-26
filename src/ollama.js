@@ -39,8 +39,8 @@ class OllamaClient {
     this.baseUrl = store.get('ollamaEndpoint', 'http://localhost:11434');
     this.model = store.get('ollamaModel', 'deepseek-r1:8b'); // Default to one of your available models
     
-    // Get the prompt file from configuration - default to v2.txt
-    this.promptFile = store.get('promptFile', 'v2.txt');
+    // Get the prompt file from configuration - default to v3.txt
+    this.promptFile = store.get('promptFile', 'v3.txt');
     
   }
 
@@ -160,13 +160,9 @@ Provide 2-4 clarification questions that would help improve this report:
 
       const response = await this.makeOllamaRequest(prompt);
       
-      // Extract numbered questions from the response
-      const questionLines = response.split('\n')
-        .filter(line => /^\d+\./.test(line.trim()))
-        .map(line => line.trim());
-      
-      // If no questions were found in the expected format, return the whole response
-      return questionLines.length > 0 ? questionLines : [response];
+      // Instead of parsing the response here, return the full text
+      // The renderer will handle extracting thinking tags and parsing questions
+      return response;
     } catch (error) {
       console.error('Error generating clarification questions:', error);
       throw error;
@@ -429,13 +425,15 @@ Provide 2-4 clarification questions that would help improve this report:
     if (modelSizeInB >= ranges.easy[0] && modelSizeInB <= ranges.easy[1]) {
       comfortLevel = 'Easy';
       message = 'Will run well';
+      loadingMessage = 'You may not have time for tea.';
     } else if (modelSizeInB >= ranges.difficult[0] && modelSizeInB <= ranges.difficult[1]) {
       comfortLevel = 'Difficult';
       message = "Will run slowly";
-      loadingMessage = 'This could take a few minutes. Plenty of time for tea.';
+      loadingMessage = 'This could take a few minutes.<br>Plenty of time for tea.';
     } else {
       comfortLevel = 'Impossible';
       message = 'Not enough RAM';
+      loadingMessage = 'This probably will not run.<br>Suggest closing this program.';
     }
     
     // Debug output to help troubleshoot

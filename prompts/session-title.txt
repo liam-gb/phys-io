@@ -1,5 +1,5 @@
 You are helping to generate a short, descriptive title for a physiotherapy session.
-Based on the following information, create a concise title (3-5 words) that summarizes the key issue or treatment:
+Based on the following information, create a concise title (<4 words) that summarizes the key issue or treatment:
 
 PATIENT NOTES:
 {{notes}}
@@ -7,14 +7,9 @@ PATIENT NOTES:
 REPORT EXCERPT:
 {{report}}
 
-<thinking>
-Analyze the patient notes and report excerpt to identify:
-1. The main condition or injury (e.g., knee pain, back sprain, shoulder impingement)
-2. Key anatomical area affected
-3. Notable treatment approach if mentioned
-4. Patient demographic if relevant
+First analyze the notes and report excerpt to identify the main condition, affected area, treatment approach, and patient demographic if relevant.
 
-Create a title focusing on the main condition that's specific enough to differentiate it from other cases, but general enough to be understood at a glance.
+Create a concise title (4 words or less) that summarizes the key physiotherapy issue or treatment.
 
 Examples of good titles:
 - "ACL Tear Rehabilitation"
@@ -22,7 +17,9 @@ Examples of good titles:
 - "Post-Surgery Shoulder Recovery"
 - "Tennis Elbow Treatment"
 - "Geriatric Fall Prevention"
-</thinking>
 
-Reply ONLY with the title, nothing else. Keep it short and specific to the condition or treatment.
-The title must be 30 characters or less to fit in a menu.
+IMPORTANT: Your final response MUST follow this exact format:
+TITLE: [Your concise title here]
+
+Do not include any other explanatory text, thinking process, or tags.
+The title must be 25 characters or less to fit in a menu.

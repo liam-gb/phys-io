@@ -402,7 +402,7 @@ async function generateClarificationQuestions(notes, reportText) {
   const loadingId = addLoadingMessage('clarification');
   
   try {
-    const questions = await window.api.ollama.generateClarificationQuestions(notes, reportText);
+    const questionsResponse = await window.api.ollama.generateClarificationQuestions(notes, reportText);
     
     // Remove loading message
     removeLoadingMessage(loadingId);
@@ -410,47 +410,44 @@ async function generateClarificationQuestions(notes, reportText) {
     // Check model compatibility for tea-time message
     const compatibility = await evaluateModelCompatibility(currentSession.model);
     
-    if (questions && questions.length > 0) {
+    // Process the response - could be raw text with thinking tags
+    let extractedQuestions = [];
+    
+    // Check if the response is already an array of questions
+    if (Array.isArray(questionsResponse) && questionsResponse.length > 0) {
+      extractedQuestions = questionsResponse;
+    } else if (typeof questionsResponse === 'string') {
+      // Extract thinking part to display separately
+      const thinkingContent = extractThinking(questionsResponse);
+      
+      // Get the cleaned content (without thinking tags)
+      const cleanedContent = removeThinking(questionsResponse);
+      
+      // Try to extract numbered questions from the cleaned content
+      extractedQuestions = cleanedContent.split('\n')
+        .filter(line => /^\d+\./.test(line.trim()))
+        .map(line => line.trim());
+      
+      // If no questions were found in the expected format, use the whole content
+      if (extractedQuestions.length === 0) {
+        extractedQuestions = [cleanedContent.trim()];
+      }
+    }
+    
+    if (extractedQuestions.length > 0) {
       // Small delay to ensure loading message is gone
       setTimeout(() => {
-        // Add a message indicating we have questions
-        addSystemMessage("I have some questions that may help improve this letter:");
-        
-        // Create HTML for questions, removing any quotation marks
-        const questionsDiv = document.createElement('div');
-        questionsDiv.className = 'clarification-questions';
-        
-        questionsDiv.innerHTML = `
-          <h4>Clarification Questions:</h4>
-          <ul>
-            ${questions.map(q => `<li>${q.replace(/^\d+\.\s*/, '').replace(/^["']|["']$/g, '')}</li>`).join('')}
-          </ul>
-          <div class="clarification-actions">
-            <button class="secondary-button small-button answer-questions-btn" style="background-color: #f0ebff; color: #6B3FA0; border-color: #d4c6ff;">
-              <i class="fa-solid fa-reply"></i> Answer Questions
-            </button>
-          </div>
-          <div class="message-timestamp">${formatTimestamp(new Date())}</div>
-        `;
-        
-        // Add event listener for the answer button
-        const answerBtn = questionsDiv.querySelector('.answer-questions-btn');
-        if (answerBtn) {
-          answerBtn.addEventListener('click', () => {
-            showAnswerQuestionsDialog(questions);
-          });
-        }
-        
-        // Add questions to UI
-        addMessageToUI('questions', questionsDiv.outerHTML);
+        // Add the questions with the original response content
+        // This will include the thinking section if present
+        addMessageToUI('questions', questionsResponse);
         
         // Store questions in the session
         currentSession.messages.push({
           role: 'system',
-          content: 'CLARIFICATION QUESTIONS:\n' + questions.join('\n'),
+          content: questionsResponse,
           timestamp: new Date().toISOString(),
           isQuestions: true,
-          questions: questions
+          questions: extractedQuestions
         });
       }, 300);
     }
@@ -889,17 +886,30 @@ The title must be 30 characters or less to fit in a menu.
     if (title && title.length > 0) {
       // Clean up title - remove quotes, tags, and limit length
       let cleanTitle = title.replace(/["']/g, '').trim();
-      // Remove any <thinking> tags and their content
-      cleanTitle = cleanTitle.replace(/<thinking>[\s\S]*?<\/thinking>/g, '');
-      // Remove any other tags
-      cleanTitle = cleanTitle.replace(/<[^>]*>/g, '');
+      
+      // Check for TITLE: format first
+      const titleMatch = cleanTitle.match(/TITLE:\s*(.*)/i);
+      if (titleMatch && titleMatch[1]) {
+        cleanTitle = titleMatch[1].trim();
+      } else {
+        // Remove any <thinking> tags and their content if TITLE: format not found
+        cleanTitle = cleanTitle.replace(/<thinking>[\s\S]*?<\/thinking>/g, '');
+        // Remove any other tags
+        cleanTitle = cleanTitle.replace(/<[^>]*>/g, '');
+        
+        // If there's a colon in the text, take everything after the last colon
+        const colonIndex = cleanTitle.lastIndexOf(':');
+        if (colonIndex !== -1 && colonIndex < cleanTitle.length - 1) {
+          cleanTitle = cleanTitle.substring(colonIndex + 1).trim();
+        }
+      }
+      
       // Ensure title is brief enough for sidebar (max 30 chars)
       cleanTitle = cleanTitle.substring(0, 30);
       currentSession.title = cleanTitle;
       updateSessionInSidebar();
       
       // Schedule autosave to persist the title
-      scheduleAutosave();
     }
   } catch (error) {
     console.error('Failed to generate session title:', error);
@@ -1153,10 +1163,34 @@ function addMessageToUI(type, content) {
                          'message system-message';
   
   if (type === 'letter') {
+    // Use the full content without separating thinking
+    messageDiv.innerHTML = `
+      <div class="message-content">${formatReport(content)}</div>
+      <div class="message-timestamp">${formatTimestamp(new Date())}</div>
+      <div class="message-controls">
+        <button class="secondary-button small-button copy-btn">
+          <i class="fa-solid fa-copy"></i> Copy
+        </button>
+        <button class="secondary-button small-button export-btn">
+          <i class="fa-solid fa-file-export"></i> Export
+        </button>
+      </div>
+    `;
+    
+    // Add event listeners for the buttons
+    messageDiv.querySelector('.copy-btn').addEventListener('click', () => {
+      copyReportToClipboard(content);
+    });
+    
+    messageDiv.querySelector('.export-btn').addEventListener('click', () => {
+      exportReport(content);
+    });
+  } else if (type === 'questions') {
     // Extract thinking content if present
     const thinkingContent = extractThinking(content);
-    // Remove thinking tags and content for the actual letter
-    const letterContent = removeThinking(content);
+    
+    // Remove thinking tags to get just the questions
+    const questionsContent = removeThinking(content);
     
     // Add thinking message first if present
     if (thinkingContent) {
@@ -1187,38 +1221,35 @@ function addMessageToUI(type, content) {
       conversationHistory.appendChild(thinkingDiv);
     }
     
-    messageDiv.innerHTML = `
-      <div class="message-content">${formatReport(letterContent)}</div>
-      <div class="message-timestamp">${formatTimestamp(new Date())}</div>
-      <div class="message-controls">
-        <button class="secondary-button small-button copy-btn">
-          <i class="fa-solid fa-copy"></i> Copy
-        </button>
-        <button class="secondary-button small-button export-btn">
-          <i class="fa-solid fa-file-export"></i> Export
-        </button>
+    // Process questions - extract numbered items
+    const questionLines = questionsContent.split('\n')
+      .filter(line => /^\d+\./.test(line.trim()))
+      .map(line => `<li>${line.replace(/^\d+\./, '').trim().replace(/^["']|["']$/g, '')}</li>`)
+      .join('');
+    
+    // Create HTML for questions
+    const questionsHTML = `
+      <div class="clarification-questions">
+        <h4>Clarification Questions:</h4>
+        <ul>
+          ${questionLines}
+        </ul>
+        <div class="clarification-actions">
+          <button class="secondary-button small-button answer-questions-btn" style="background-color: #f0ebff; color: #6B3FA0; border-color: #d4c6ff;">
+            <i class="fa-solid fa-reply"></i> Answer Questions
+          </button>
+        </div>
       </div>
     `;
     
-    // Add event listeners for the buttons
-    messageDiv.querySelector('.copy-btn').addEventListener('click', () => {
-      copyReportToClipboard(letterContent);
-    });
-    
-    messageDiv.querySelector('.export-btn').addEventListener('click', () => {
-      exportReport(letterContent);
-    });
-  } else if (type === 'questions') {
-    // For pre-formatted question content (HTML)
     messageDiv.innerHTML = `
-      <div class="message-content">${content}</div>
+      <div class="message-content">${questionsHTML}</div>
       <div class="message-timestamp">${formatTimestamp(new Date())}</div>
     `;
     
-    // Add event listeners for any answer buttons within the content
+    // Add event listener for the answer button
     const answerBtn = messageDiv.querySelector('.answer-questions-btn');
     if (answerBtn) {
-      // Extract questions from the content
       const questions = [];
       const questionItems = messageDiv.querySelectorAll('.clarification-questions li');
       questionItems.forEach(item => {
@@ -1371,7 +1402,7 @@ async function addLoadingMessage(stage = 'letter') {
         </svg>
       </div>
       <p>${loadingMessage}</p>
-      ${compatibility.comfortLevel !== 'Easy' ? '<p class="tea-reminder">This could take a few minutes<br>Plenty of time for tea.</p>' : ''}
+      ${compatibility.comfortLevel !== 'Easy' ? '<p class="tea-reminder">This could take a few minutes.<br>Plenty of time for tea.</p>' : ''}
     </div>
   `;
   
@@ -1465,16 +1496,66 @@ function formatDate(date) {
 // Format the report text with HTML
 // Extract thinking content from text
 function extractThinking(text) {
-  const thinkingMatch = text.match(/<thinking>([\s\S]*?)<\/thinking>/);
-  if (thinkingMatch && thinkingMatch[1]) {
-    return thinkingMatch[1].trim();
+  // Method 1: Try to extract content from thinking tags
+  const thinkingMatch = text.match(/<thinking>[\s\S]*?<\/thinking>/i);
+  if (thinkingMatch && thinkingMatch[0]) {
+    // Extract just the content inside the tags
+    const contentMatch = thinkingMatch[0].match(/<thinking>([\s\S]*?)<\/thinking>/i);
+    if (contentMatch && contentMatch[1]) {
+      return contentMatch[1].trim();
+    }
+    return thinkingMatch[0].replace(/<\/?thinking>/gi, '').trim();
   }
+  
+  // Method 2: If no thinking tags, try to extract everything before marker
+  if (text.includes('**REFERRAL LETTER**')) {
+    const parts = text.split('**REFERRAL LETTER**');
+    if (parts.length > 1 && parts[0].trim().length > 0) {
+      return parts[0].trim();
+    }
+  }
+  
+  // Method 3: Check for title marker
+  if (text.includes('**TITLE:**')) {
+    const parts = text.split('**TITLE:**');
+    if (parts.length > 1 && parts[0].trim().length > 0) {
+      return parts[0].trim();
+    }
+  }
+  
   return null;
 }
 
 // Remove thinking tags and their content from text
 function removeThinking(text) {
-  return text.replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+  // First try to remove any complete thinking blocks
+  const withoutThinking = text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+  
+  // Also remove any potentially unmatched thinking tags
+  let cleanedText = withoutThinking.replace(/<\/?thinking>/gi, '').trim();
+  
+  // Check for marker fallbacks if thinking tags weren't found or didn't work
+  if (text === cleanedText || !text.match(/<thinking>[\s\S]*?<\/thinking>/gi)) {
+    // Check for REFERRAL LETTER marker (for letters)
+    if (cleanedText.includes('**REFERRAL LETTER**')) {
+      const parts = cleanedText.split('**REFERRAL LETTER**');
+      if (parts.length > 1) {
+        // Take everything after the REFERRAL LETTER marker
+        return parts[1].trim();
+      }
+    }
+    
+    // Check for TITLE marker (for session titles)
+    if (cleanedText.includes('**TITLE:**')) {
+      const parts = cleanedText.split('**TITLE:**');
+      if (parts.length > 1) {
+        // Take everything after the TITLE marker
+        return parts[1].trim();
+      }
+    }
+  }
+  
+  return cleanedText;
 }
 
 function formatReport(reportText) {
