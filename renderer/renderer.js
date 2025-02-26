@@ -18,6 +18,23 @@ const cancelModalBtn = document.getElementById('cancel-modal-btn');
 const confirmModalBtn = document.getElementById('confirm-modal-btn');
 const nodeVersionElement = document.getElementById('node-version');
 const electronVersionElement = document.getElementById('electron-version');
+let modelCompatibilityCache = {};
+
+if (!document.getElementById('model-status')) {
+  console.log('Model status element missing - creating it');
+  const statusDiv = document.createElement('div');
+  statusDiv.id = 'model-status';
+  statusDiv.className = 'model-status';
+  statusDiv.textContent = 'Checking...';
+  
+  // Find the model-select-wrapper and append the status div
+  const wrapper = document.querySelector('.model-select-wrapper');
+  if (wrapper) {
+    wrapper.appendChild(statusDiv);
+  } else {
+    console.error('Cannot find model-select-wrapper');
+  }
+}
 
 // Current session state
 let currentSession = {
@@ -156,13 +173,22 @@ async function getSystemInfo() {
 }
 
 // Evaluate model compatibility
-async function evaluateModelCompatibility(modelName) {
+async function evaluateModelCompatibility(modelName, forceRefresh = false) {
   try {
-    // Always get fresh evaluation to ensure it's updated
-    modelCompatibilityInfo[modelName] = await window.api.ollama.evaluateModelCompatibility(modelName);
+    // Return cached result unless forceRefresh is true
+    if (!forceRefresh && modelCompatibilityCache[modelName]) {
+      console.log(`Using cached compatibility for ${modelName}`);
+      return modelCompatibilityCache[modelName];
+    }
     
-    console.log(`Evaluated compatibility for ${modelName}:`, modelCompatibilityInfo[modelName]);
-    return modelCompatibilityInfo[modelName];
+    // Always get fresh evaluation from backend
+    const compatibility = await window.api.ollama.evaluateModelCompatibility(modelName);
+    
+    // Cache the result
+    modelCompatibilityCache[modelName] = compatibility;
+    
+    console.log(`Evaluated compatibility for ${modelName}:`, compatibility);
+    return compatibility;
   } catch (error) {
     console.error(`Failed to evaluate compatibility for ${modelName}:`, error);
     return {
@@ -213,23 +239,23 @@ async function loadModels() {
         const option = document.createElement('option');
         option.value = name;
         
-        let displayText = name;
-        
-        // Add compatibility indicator
+        // build a more descriptive label with status included
+        let statusEmoji = '';
         if (compatibility.comfortLevel === 'Easy') {
-          displayText += ' ✓';
+          statusEmoji = ' ✓';
         } else if (compatibility.comfortLevel === 'Difficult') {
-          displayText += ' ⚠️';
+          statusEmoji = ' ⚠️';
         } else if (compatibility.comfortLevel === 'Impossible') {
-          displayText += ' ❌';
+          statusEmoji = ' ❌';
         }
         
-        option.textContent = displayText;
+        // include the message directly in the option text
+        option.textContent = `${name}${statusEmoji} (${compatibility.message})`;
         
-        // Set tooltip with compatibility message
+        // still set tooltip for extra context
         option.title = compatibility.message;
         
-        // Add data attributes for compatibility info
+        // keep the data attribute for potential future use
         option.dataset.comfortLevel = compatibility.comfortLevel;
         
         modelSelect.appendChild(option);
@@ -238,6 +264,7 @@ async function loadModels() {
       // Restore selection or use first model
       if (currentSelection && models.includes(currentSelection)) {
         modelSelect.value = currentSelection;
+        updateModelStatusDisplay(modelCompatibilityCache[modelSelect.value] || { comfortLevel: 'Unknown', message: 'Checking compatibility...' });
         currentSession.model = currentSelection;
       } else {
         currentSession.model = models[0];
@@ -267,33 +294,34 @@ async function loadModels() {
   }
 }
 
+function updateModelStatusDisplay(compatInfo) {
+  console.log('DEBUG - updating model status with:', compatInfo);
+
+  const modelStatusElement = document.getElementById('model-status');
+  if (modelStatusElement) {
+    // Remove previous classes
+    modelStatusElement.classList.remove('easy', 'difficult', 'impossible');
+    
+    // Convert comfort level to lowercase for class names
+    const comfortClass = compatInfo.comfortLevel.toLowerCase();
+    
+    // Add new class
+    modelStatusElement.classList.add(comfortClass);
+    
+    // Update message
+    modelStatusElement.textContent = compatInfo.message;
+    
+    // Make sure it's visible
+    modelStatusElement.style.display = 'inline-block';
+  }
+}
+
 // Update compatibility info display
 async function updateModelCompatibilityDisplay(modelName) {
   try {
-    // Get compatibility info if not already available
+    // Get compatibility info from cache or evaluate if needed
     const compatInfo = await evaluateModelCompatibility(modelName);
-    
-    // Update model status display if it exists
-    const modelStatusElement = document.getElementById('model-status');
-    if (modelStatusElement) {
-      // Remove previous classes
-      modelStatusElement.classList.remove('easy', 'difficult', 'impossible');
-      
-      // Convert comfort level to lowercase for class names
-      const comfortClass = compatInfo.comfortLevel.toLowerCase();
-      
-      // Add new class
-      modelStatusElement.classList.add(comfortClass);
-      
-      // Update message
-      modelStatusElement.textContent = compatInfo.message;
-      
-      // Make sure it's visible
-      modelStatusElement.style.display = 'inline-block';
-      
-      modelStatusElement.textContent = compatInfo.message;
-    }
-    
+    updateModelStatusDisplay(compatInfo);
     console.log(`Updated model compatibility display for ${modelName}: ${compatInfo.comfortLevel}`);
   } catch (error) {
     console.error('Error updating model compatibility display:', error);
@@ -1615,15 +1643,24 @@ confirmModal.addEventListener('click', (e) => {
 });
 
 modelSelect.addEventListener('change', async () => {
+  console.log('Dropdown changed to:', modelSelect.value);
+
   const newModel = modelSelect.value;
   currentSession.model = newModel;
   await window.api.ollama.setModel(newModel);
   
-  // Clear the cache and re-fetch all compatibility info
-  modelCompatibilityInfo = {};
-  await updateModelCompatibilityDisplay(newModel);
+  // Just use the cache we already built - no need to re-evaluate
+  if (modelCompatibilityCache[newModel]) {
+    updateModelStatusDisplay(modelCompatibilityCache[newModel]);
+  } else {
+    // Fallback if somehow not in cache
+    const compatibility = await evaluateModelCompatibility(newModel);
+    updateModelStatusDisplay(compatibility);
+  }
   
   scheduleAutosave();
+  console.log('Model compatibility cache:', modelCompatibilityCache);
+
 });
 
 // Set up periodic connection checks

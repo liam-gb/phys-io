@@ -508,8 +508,8 @@ At the end of your report, include a section with the header <questions> that li
     
     // Default values
     let comfortLevel = 'Easy';
-    let message = 'No sweat, your machine should run this just fine.';
-    let loadingMessage = null;
+  let message = 'Will run well'; 
+  let loadingMessage = null;
     
     // Determine comfort level based on matrix
     const ranges = compatMatrix[archType][ramCategory];

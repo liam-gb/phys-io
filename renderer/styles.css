@@ -231,7 +231,7 @@ select {
 
 .tooltip-content {
   visibility: hidden;
-  width: 800px;
+  width: 700px;
   max-width: 90vw;
   background-color: #fff;
   color: #333;
@@ -886,4 +886,8 @@ button {
   padding-left: 10px;
   margin-left: 0;
   color: #666;
+}
+
+.model-status {
+  display: none !important;
 }
