@@ -407,25 +407,18 @@ async function generateClarificationQuestions(notes, reportText) {
       addSystemMessage("I have some questions that may help improve this report:");
       
       // Create HTML for questions
-      const questionsHtml = `
-        <div class="clarification-questions">
-          <h4>Clarification Questions:</h4>
-          <ul>
-            ${questions.map(q => `<li>${q.replace(/^\d+\.\s*/, '')}</li>`).join('')}
-          </ul>
-          <div class="clarification-actions">
-            <button class="secondary-button small-button answer-questions-btn" style="background-color: #f0ebff; color: #6B3FA0; border-color: #d4c6ff;">
-              <i class="fa-solid fa-reply"></i> Answer Questions
-            </button>
-          </div>
-        </div>
-      `;
-      
-      // Add the questions to UI
       const questionsDiv = document.createElement('div');
-      questionsDiv.className = 'message questions-message';
+      questionsDiv.className = 'clarification-questions';
       questionsDiv.innerHTML = `
-        <div class="message-content">${questionsHtml}</div>
+        <h4>Clarification Questions:</h4>
+        <ul>
+          ${questions.map(q => `<li>${q.replace(/^\d+\.\s*/, '')}</li>`).join('')}
+        </ul>
+        <div class="clarification-actions">
+          <button class="secondary-button small-button answer-questions-btn" style="background-color: #f0ebff; color: #6B3FA0; border-color: #d4c6ff;">
+            <i class="fa-solid fa-reply"></i> Answer Questions
+          </button>
+        </div>
         <div class="message-timestamp">${formatTimestamp(new Date())}</div>
       `;
       

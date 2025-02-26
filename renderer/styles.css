@@ -668,11 +668,10 @@ button {
 }
 
 /* Clarification questions styling */
-.clarification-questions {
-  padding: 8px 12px;
-  margin: 0;
-  background-color: #f8f5ff;
-  border-radius: 6px;
+.clarification-questions ul {
+  padding-left: 20px;
+  margin: 8px 0 16px 0;
+  list-style: none;
 }
 
 .clarification-questions h4 {
@@ -714,15 +713,9 @@ button {
 
 .questions-message {
   margin-right: auto;
-  background-color: #fff;
-  border: 1px solid #e0e0e0;
-  border-left: 4px solid #8A4FFF;
-  border-radius: 8px;
-  padding: 16px;
   width: 95%;
   margin-bottom: 12px;
   word-break: break-word;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 #questions-modal .modal-content {
