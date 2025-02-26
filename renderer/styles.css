@@ -251,6 +251,37 @@ select {
   line-height: 1.5;
 }
 
+/* Markdown Styling */
+.markdown-content h1 {
+  font-size: calc(var(--font-size-large) * 1.2);
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #4361ee;
+}
+
+.markdown-content h2 {
+  font-size: var(--font-size-large);
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  color: #4361ee;
+}
+
+.markdown-content p {
+  font-size: var(--font-size-normal);
+  margin-bottom: 1rem;
+}
+
+.markdown-content ul, .markdown-content ol {
+  font-size: var(--font-size-normal);
+  margin-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.markdown-content strong {
+  font-weight: 600;
+  color: #444;
+}
+
 .tooltip-container:hover .tooltip-content {
   visibility: visible;
   opacity: 1;

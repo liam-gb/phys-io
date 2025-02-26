@@ -1,3 +1,5 @@
+# Disclaimer
+
 PROTOTYPE ONLY - NOT FOR CLINICAL USE
 
 Phys.IO is provided "as is" without warranty. AI outputs have not been clinically validated and must be reviewed by qualified professionals before any use.

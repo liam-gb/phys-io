@@ -1324,6 +1324,7 @@ const closeInfoModalBtn = document.getElementById('close-info-modal-btn');
 const infoContent = document.getElementById('info-content');
 const introTab = document.getElementById('intro-tab');
 const disclaimerTab = document.getElementById('disclaimer-tab');
+const appInfoTooltip = document.getElementById('app-info-tooltip');
 
 // Load and display documentation
 async function loadDocContent(filename) {
@@ -1338,6 +1339,25 @@ async function loadDocContent(filename) {
     return `Error loading content: ${error.message}`;
   }
 }
+
+// Load tooltip content when page loads
+async function loadTooltipContent() {
+  try {
+    const introContent = await loadDocContent('intro.txt');
+    const disclaimerContent = await loadDocContent('disclaimer.txt');
+    const combinedContent = `${introContent}\n\n${disclaimerContent}`;
+    appInfoTooltip.innerHTML = marked.parse(combinedContent);
+  } catch (error) {
+    console.error('Error loading tooltip content:', error);
+    appInfoTooltip.textContent = 'Error loading information';
+  }
+}
+
+// Make sure this runs after DOM is loaded and marked library is available
+document.addEventListener('DOMContentLoaded', () => {
+  // Small delay to ensure marked is loaded
+  setTimeout(loadTooltipContent, 100);
+});
 
 function showInfoModal(tabName = 'intro') {
   infoModal.classList.remove('hidden');
