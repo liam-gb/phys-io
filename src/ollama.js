@@ -76,15 +76,27 @@ class OllamaClient {
       let responseData = '';
       
       request.on('response', (response) => {
+        // add status code check
+        if (response.statusCode !== 200) {
+          return reject(new Error(`Ollama returned status ${response.statusCode}`));
+        }
+        
         response.on('data', (chunk) => {
           responseData += chunk.toString();
         });
         
         response.on('end', () => {
           try {
+            // check if response looks like json
+            if (!responseData.trim().startsWith('{')) {
+              console.error('Non-JSON response:', responseData.substring(0, 100));
+              return reject(new Error('Invalid response format from Ollama'));
+            }
+            
             const parsed = JSON.parse(responseData);
             resolve(parsed.response);
           } catch (e) {
+            console.error('Parse error:', e, 'Data:', responseData.substring(0, 100));
             reject(new Error(`Failed to parse Ollama response: ${e.message}`));
           }
         });
@@ -231,34 +243,53 @@ At the end of your report, include a section with the header <questions> that li
 
   async checkConnection() {
     try {
-      const request = net.request({
-        method: 'GET',
-        url: `${this.baseUrl}/api/tags`,
-      });
+      console.log('DEBUG: attempting ollama connection to:', this.baseUrl);
       
       return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          console.log('DEBUG: ollama connection timeout');
+          resolve(false);
+        }, 5000); // 5s timeout
+        
+        const request = net.request({
+          method: 'GET',
+          url: `${this.baseUrl}/api/tags`,
+        });
+        
         request.on('response', (response) => {
+          clearTimeout(timeout);
           let data = '';
           response.on('data', (chunk) => {
             data += chunk;
           });
           
           response.on('end', () => {
+            console.log('DEBUG: ollama response status:', response.statusCode);
             if (response.statusCode === 200) {
-              resolve(true);
+              try {
+                const parsed = JSON.parse(data);
+                console.log('DEBUG: ollama models found:', parsed.models?.length || 0);
+                resolve(true);
+              } catch (parseErr) {
+                console.error('DEBUG: failed to parse ollama response:', parseErr);
+                resolve(false);
+              }
             } else {
-              reject(new Error(`Ollama returned status code ${response.statusCode}`));
+              resolve(false);
             }
           });
         });
         
-        request.on('error', () => {
-          resolve(false); // Quietly fail - Ollama is likely not running
+        request.on('error', (error) => {
+          clearTimeout(timeout);
+          console.error('DEBUG: ollama connection error:', error.message);
+          resolve(false); // fail gracefully
         });
         
         request.end();
       });
     } catch (error) {
+      console.error('DEBUG: unexpected error in checkConnection:', error);
       return false;
     }
   }

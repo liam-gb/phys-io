@@ -35,10 +35,6 @@ let currentSession = {
 let autosaveTimer = null;
 const AUTOSAVE_DELAY = 5000; // 5 seconds
 
-// Display versions
-nodeVersionElement.textContent = window.api.versions.node();
-electronVersionElement.textContent = window.api.versions.electron();
-
 // Initialize app
 async function initializeApp() {
   await checkOllamaConnection();
@@ -57,15 +53,6 @@ async function initializeApp() {
       await loadSession(latestSession.dataset.id);
     }
   }
-  
-  // Make sure to update the model compatibility display after initialization
-  // This ensures the status is visible on startup
-  if (modelSelect.value) {
-    await updateModelCompatibilityDisplay(modelSelect.value);
-  }
-  
-  // Load app info for tooltip
-  await loadAppInfo();
 }
 
 // Check Ollama connection
@@ -105,17 +92,6 @@ async function getSystemInfo() {
   try {
     systemInfo = await window.api.ollama.getSystemInfo();
     console.log('System info:', systemInfo);
-    
-    // Update system info in the tooltip
-    const systemInfoElement = document.getElementById('system-info');
-    if (systemInfoElement && systemInfo) {
-      const cpuInfo = systemInfo.cpu.isAppleSilicon ? 
-        `Apple ${systemInfo.cpu.model}` : 
-        systemInfo.cpu.model;
-      
-      systemInfoElement.textContent = `${cpuInfo}, ${systemInfo.memory.total}GB RAM`;
-    }
-    
     return systemInfo;
   } catch (error) {
     console.error('Failed to get system info:', error);
@@ -180,7 +156,6 @@ async function loadModels() {
         const option = document.createElement('option');
         option.value = name;
         
-        // Display the raw model name
         let displayText = name;
         
         // Add compatibility indicator
@@ -247,21 +222,13 @@ async function updateModelCompatibilityDisplay(modelName) {
     modelStatusElement.classList.remove('easy', 'difficult', 'impossible');
     // Add new class
     modelStatusElement.classList.add(compatInfo.comfortLevel.toLowerCase());
-    
-    // Use simpler messages as requested
-    let message = '';
-    if (compatInfo.comfortLevel === 'Easy') {
-      message = 'Should run fine';
-    } else if (compatInfo.comfortLevel === 'Difficult') {
-      message = 'Will be slow';
-    } else if (compatInfo.comfortLevel === 'Impossible') {
-      message = 'Too large';
-    }
-    
     // Update message
-    modelStatusElement.textContent = message;
+    modelStatusElement.textContent = compatInfo.message;
+    // Make sure it's visible
+    modelStatusElement.style.display = 'inline-block';
   }
   
+  console.log(`Updated model compatibility display for ${modelName}: ${compatInfo.comfortLevel}`);
 }
 
 // Handle sending messages
@@ -286,6 +253,9 @@ async function sendMessage() {
   if (currentSession.isInitialMessage) {
     await generateInitialReport(text);
     currentSession.isInitialMessage = false;
+    
+    // Add system message prompting for feedback
+    addSystemMessage("Your report is ready. Please provide any feedback to improve it.");
     
     // Generate a meaningful title for the session
     await generateSessionTitle();
@@ -353,6 +323,9 @@ Yours sincerely,
 
     const response = await window.api.ollama.generateConversationalResponse(reportPrompt);
     
+    // Remove loading message
+    removeLoadingMessage(loadingId);
+    
     if (response) {
       // Try to extract patient name from report
       const patientNameMatch = response.match(/Patient(?:\sName)?:\s*([A-Za-z\s]+)(?:,|\n|$)/i);
@@ -375,11 +348,9 @@ Yours sincerely,
       // Update current report index
       currentSession.currentReportIndex = currentSession.messages.length - 1;
       
-      // Generate clarification questions - don't remove loading message yet
-      await generateClarificationQuestions(notes, response);
+      // Generate clarification questions
+      generateClarificationQuestions(notes, response);
     } else {
-      // Remove loading message if we have an error
-      removeLoadingMessage(loadingId);
       addErrorMessage("Failed to generate report. Please check if Ollama is running.");
     }
   } catch (error) {
@@ -391,13 +362,14 @@ Yours sincerely,
 
 // Generate clarification questions based on the notes and generated report
 async function generateClarificationQuestions(notes, reportText) {
+  // Show loading message for questions generation
+  const loadingId = addLoadingMessage();
+  
   try {
     const questions = await window.api.ollama.generateClarificationQuestions(notes, reportText);
     
-    // Find and remove all loading messages as we're now finished with the entire generation process
-    document.querySelectorAll('.message.system-message.loading').forEach(el => {
-      el.remove();
-    });
+    // Remove loading message
+    removeLoadingMessage(loadingId);
     
     if (questions && questions.length > 0) {
       // Add a message indicating we have questions
@@ -445,17 +417,9 @@ async function generateClarificationQuestions(notes, reportText) {
         isQuestions: true,
         questions: questions
       });
-    } else {
-      // If no questions were generated, still remove any loading messages
-      document.querySelectorAll('.message.system-message.loading').forEach(el => {
-        el.remove();
-      });
     }
   } catch (error) {
-    // Make sure to remove all loading messages if there's an error
-    document.querySelectorAll('.message.system-message.loading').forEach(el => {
-      el.remove();
-    });
+    removeLoadingMessage(loadingId);
     console.error('Error generating clarification questions:', error);
   }
 }
@@ -576,10 +540,8 @@ async function submitClarificationAnswers(answers) {
     // Generate updated report
     const updatedReport = await window.api.ollama.generateReportWithClarifications(initialNotes, answers);
     
-    // Always remove all loading messages when done
-    document.querySelectorAll('.message.system-message.loading').forEach(el => {
-      el.remove();
-    });
+    // Remove loading message
+    removeLoadingMessage(loadingId);
     
     if (updatedReport) {
       // Add the updated report to the conversation
@@ -602,10 +564,8 @@ async function submitClarificationAnswers(answers) {
       addErrorMessage("Failed to generate updated report.");
     }
   } catch (error) {
-    // Remove all loading messages
-    document.querySelectorAll('.message.system-message.loading').forEach(el => {
-      el.remove();
-    });
+    // Remove loading message
+    removeLoadingMessage(loadingId);
     addErrorMessage(`Error: ${error.message}`);
   }
 }
@@ -621,10 +581,8 @@ async function generateResponse() {
     
     const response = await window.api.ollama.generateConversationalResponse(prompt);
     
-    // Always remove all loading messages when done
-    document.querySelectorAll('.message.system-message.loading').forEach(el => {
-      el.remove();
-    });
+    // Remove loading message
+    removeLoadingMessage(loadingId);
     
     if (response) {
       // Add the response to the conversation
@@ -644,10 +602,8 @@ async function generateResponse() {
       addErrorMessage("Failed to generate response.");
     }
   } catch (error) {
-    // Remove all loading messages
-    document.querySelectorAll('.message.system-message.loading').forEach(el => {
-      el.remove();
-    });
+    // Remove loading message
+    removeLoadingMessage(loadingId);
     addErrorMessage(`Error: ${error.message}`);
   }
 }
@@ -849,29 +805,7 @@ async function loadSession(sessionId) {
             addMessageToUI('system', message.content);
           }
         } else if (message.role === 'system') {
-          if (message.isQuestions && message.questions) {
-            // First add the system message indicating there are questions
-            addSystemMessage("I have some clarification questions that may help improve this report:");
-            
-            // Then create the questions UI
-            const questionsHtml = `
-              <div class="clarification-questions">
-                <h4>Clarification Questions:</h4>
-                <ul>
-                  ${message.questions.map(q => `<li>${q.replace(/^\d+\.\s*/, '')}</li>`).join('')}
-                </ul>
-                <div class="clarification-actions">
-                  <button class="secondary-button small-button answer-questions-btn">
-                    <i class="fa-solid fa-reply"></i> Answer Questions
-                  </button>
-                </div>
-              </div>
-            `;
-            
-            addMessageToUI('questions', questionsHtml);
-          } else {
-            addSystemMessage(message.content);
-          }
+          addSystemMessage(message.content);
         }
       });
       
@@ -1355,38 +1289,13 @@ function hideModal() {
   confirmModal.classList.add('hidden');
 }
 
-// Simple markdown parser function
-function renderMarkdown(text) {
-  if (!text) return '';
-  
-  // Convert headers
-  text = text.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-  text = text.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-  text = text.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-  
-  // Convert lists
-  text = text.replace(/^- (.+)$/gm, '<li>$1</li>');
-  text = text.replace(/(<li>.+<\/li>\n)+/g, '<ul>$&</ul>');
-  
-  // Convert paragraphs
-  text = text.replace(/^([^<\n].+)$/gm, '<p>$1</p>');
-  
-  // Convert bold and italic
-  text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  
-  // Convert links
-  text = text.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2">$1</a>');
-  
-  return text;
-}
-
 // Info Modal
 const infoBtn = document.getElementById('info-btn');
 const infoModal = document.getElementById('info-modal');
 const closeInfoModalBtn = document.getElementById('close-info-modal-btn');
-const introContent = document.getElementById('intro-content');
-const disclaimerContent = document.getElementById('disclaimer-content');
+const infoContent = document.getElementById('info-content');
+const introTab = document.getElementById('intro-tab');
+const disclaimerTab = document.getElementById('disclaimer-tab');
 
 // Load and display documentation
 async function loadDocContent(filename) {
@@ -1402,20 +1311,23 @@ async function loadDocContent(filename) {
   }
 }
 
-async function showInfoModal() {
+function showInfoModal(tabName = 'intro') {
   infoModal.classList.remove('hidden');
   
-  // Load both content sections
-  try {
-    // Load intro content
-    const introText = await loadDocContent('intro.txt');
-    introContent.innerHTML = renderMarkdown(introText);
-    
-    // Load disclaimer content
-    const disclaimerText = await loadDocContent('disclaimer.txt');
-    disclaimerContent.innerHTML = renderMarkdown(disclaimerText);
-  } catch (error) {
-    console.error('Error loading documentation:', error);
+  // Set active tab
+  introTab.classList.remove('active');
+  disclaimerTab.classList.remove('active');
+  
+  if (tabName === 'intro') {
+    introTab.classList.add('active');
+    loadDocContent('intro.txt').then(content => {
+      infoContent.textContent = content;
+    });
+  } else if (tabName === 'disclaimer') {
+    disclaimerTab.classList.add('active');
+    loadDocContent('disclaimer.txt').then(content => {
+      infoContent.textContent = content;
+    });
   }
 }
 
@@ -1432,26 +1344,18 @@ userInput.addEventListener('input', () => {
   sendBtn.disabled = userInput.value.trim() === '';
 });
 
-// Load app info for the tooltip
-async function loadAppInfo() {
-  try {
-    // Get the tooltip element
-    const appInfoTooltip = document.getElementById('app-info-tooltip');
-    if (!appInfoTooltip) return;
-    
-    // Load both intro and disclaimer content
-    const introText = await loadDocContent('intro.txt');
-    const disclaimerText = await loadDocContent('disclaimer.txt');
-    
-    // Combine the content with a horizontal rule separator
-    const combinedContent = introText + '\n\n---\n\n**IMPORTANT DISCLAIMER**\n\n' + disclaimerText;
-    
-    // Render as markdown and update the tooltip
-    appInfoTooltip.innerHTML = renderMarkdown(combinedContent);
-  } catch (error) {
-    console.error('Error loading app info:', error);
+// Info modal event listeners
+infoBtn.addEventListener('click', () => showInfoModal('intro'));
+closeInfoModalBtn.addEventListener('click', hideInfoModal);
+introTab.addEventListener('click', () => showInfoModal('intro'));
+disclaimerTab.addEventListener('click', () => showInfoModal('disclaimer'));
+
+// Close modal when clicking outside
+infoModal.addEventListener('click', (e) => {
+  if (e.target === infoModal) {
+    hideInfoModal();
   }
-}
+});
 
 userInput.addEventListener('keydown', (e) => {
   // Send on Ctrl+Enter or Command+Enter
@@ -1481,14 +1385,6 @@ modelSelect.addEventListener('change', async () => {
   const newModel = modelSelect.value;
   currentSession.model = newModel;
   window.api.ollama.setModel(newModel);
-  
-  // Show loading state
-  const modelStatusElement = document.getElementById('model-status');
-  if (modelStatusElement) {
-    modelStatusElement.textContent = "Checking compatibility...";
-    modelStatusElement.style.display = 'inline-block';
-    modelStatusElement.className = 'model-status';
-  }
   
   // Update compatibility info display
   await updateModelCompatibilityDisplay(newModel);
