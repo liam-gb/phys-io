@@ -103,6 +103,26 @@ const errorHandler = {
   }
 };
 
+// Centralized error handler for renderer process
+const errorHandler = {
+  // Log to console only
+  log: (message, error) => {
+    console.error(`Error: ${message}`, error);
+  },
+  
+  // Show error in toast notification
+  toast: (message, error) => {
+    console.error(`Error: ${message}`, error);
+    showToast(message, true);
+  },
+  
+  // Display error in conversation history
+  display: (message, error) => {
+    console.error(`Error: ${message}`, error);
+    addErrorMessage(message);
+  }
+};
+
 // Check Ollama connection
 async function checkOllamaConnection() {
   try {
