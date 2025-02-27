@@ -314,10 +314,10 @@ Provide 2-4 clarification questions that would help improve this report:
       }
     }
     
-    // Try to extract explicit parameter count
-    const sizeMatch = lowerModelName.match(/[:-](\d+)b/i);
+    // Try to extract explicit parameter count - IMPROVED to handle decimal sizes
+    const sizeMatch = lowerModelName.match(/[:-](\d+(?:\.\d+)?)b/i);
     if (sizeMatch && sizeMatch[1]) {
-      modelSizeInB = parseInt(sizeMatch[1]);
+      modelSizeInB = parseFloat(sizeMatch[1]);
       console.log(`Extracted parameter count from name: ${modelSizeInB}B`);
       return modelSizeInB;
     }
@@ -328,6 +328,12 @@ Provide 2-4 clarification questions that would help improve this report:
         console.log(`Matched specific model ${model}: ${size}B`);
         return size;
       }
+    }
+    
+    // Handle specific deepseek variants that don't follow standard pattern
+    if (lowerModelName.includes('deepseek') && lowerModelName.includes('1.5')) {
+      console.log('Matched deepseek 1.5B variant');
+      return 1.5;
     }
     
     // Check model families
