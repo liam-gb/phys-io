@@ -1118,22 +1118,8 @@ function addMessageToUI(type, content, options = {}) {
   
   messageDiv.className = messageClasses[type] || 'message system-message';
   
-  // render based on type
-  switch(type) {
-    case 'letter':
-    case 'report':
-      renderLetterMessage(messageDiv, content, options);
-      break;
-    case 'questions':
-      renderQuestionsMessage(messageDiv, content, options);
-      break;
-    case 'thinking':
-      renderThinkingMessage(messageDiv, content, options);
-      break;
-    default:
-      // basic message (user, system, etc)
-      renderBasicMessage(messageDiv, content, options);
-  }
+  // render message
+  renderMessage(messageDiv, content, { type, ...options });
   
   conversationHistory.appendChild(messageDiv);
   scrollToBottom();
@@ -1141,114 +1127,106 @@ function addMessageToUI(type, content, options = {}) {
   return messageDiv;
 }
 
-// helper renderers
-function renderLetterMessage(element, content, options = {}) {
-  // Extract thinking content if present
+// Base message renderer that handles common rendering logic
+function renderMessage(element, content, options = {}) {
+  // common rendering logic
+  const timestamp = formatTimestamp(new Date());
+  let messageContent = '';
+  
+  // extract thinking content if present
   const thinkingContent = extractThinking(content);
+  const mainContent = removeThinking(content);
   
-  // Look for both thinking tags and "REFERRAL LETTER" marker
-  let letterContent = '';
-  if (content.includes('**REFERRAL LETTER**')) {
-    // Extract content after the referral letter marker if present
-    const parts = content.split('**REFERRAL LETTER**');
-    if (parts.length > 1) {
-      letterContent = parts[1].trim();
-    } else {
-      letterContent = removeThinking(content);
-    }
-  } else {
-    // Default to just removing thinking tags
-    letterContent = removeThinking(content);
-  }
-  
-  // Add thinking message first if present
+  // render thinking part if present
   if (thinkingContent) {
     const thinkingDiv = document.createElement('div');
     thinkingDiv.className = 'thinking-message';
-    renderThinkingMessage(thinkingDiv, thinkingContent);
+    renderThinkingContent(thinkingDiv, thinkingContent);
     conversationHistory.appendChild(thinkingDiv);
   }
   
-  element.innerHTML = `
-    <div class="message-content">${formatReport(letterContent)}</div>
-    <div class="message-timestamp">${formatTimestamp(new Date())}</div>
-    <div class="message-controls">
-      <button class="secondary-button small-button copy-btn">
-        <i class="fa-solid fa-copy"></i> Copy
-      </button>
-      <button class="secondary-button small-button export-btn">
-        <i class="fa-solid fa-file-export"></i> Export
-      </button>
-    </div>
-  `;
-  
-  // Add event listeners for the buttons
-  element.querySelector('.copy-btn').addEventListener('click', () => {
-    copyReportToClipboard(letterContent);
-  });
-  
-  element.querySelector('.export-btn').addEventListener('click', () => {
-    exportReport(letterContent);
-  });
+  // type-specific rendering
+  switch(options.type) {
+    case 'letter':
+    case 'report':
+      messageContent = formatReport(mainContent);
+      element.innerHTML = `
+        <div class="message-content">${messageContent}</div>
+        <div class="message-timestamp">${timestamp}</div>
+        <div class="message-controls">
+          <button class="secondary-button small-button copy-btn">
+            <i class="fa-solid fa-copy"></i> Copy
+          </button>
+          <button class="secondary-button small-button export-btn">
+            <i class="fa-solid fa-file-export"></i> Export
+          </button>
+        </div>
+      `;
+      
+      // Add event listeners for the buttons
+      element.querySelector('.copy-btn').addEventListener('click', () => {
+        copyReportToClipboard(mainContent);
+      });
+      
+      element.querySelector('.export-btn').addEventListener('click', () => {
+        exportReport(mainContent);
+      });
+      break;
+      
+    case 'questions':
+      // Process questions - extract numbered items
+      const questionLines = mainContent.split('\n')
+        .filter(line => /^\d+\./.test(line.trim()))
+        .map(line => `<li>${line.replace(/^\d+\./, '').trim().replace(/^["']|["']$/g, '')}</li>`)
+        .join('');
+      
+      // Create HTML for questions
+      const questionsHTML = `
+        <div class="clarification-questions">
+          <h4>Clarification Questions:</h4>
+          <ul>
+            ${questionLines}
+          </ul>
+          <div class="clarification-actions">
+            <button class="secondary-button small-button answer-questions-btn" style="background-color: #f0ebff; color: #6B3FA0; border-color: #d4c6ff;">
+              <i class="fa-solid fa-reply"></i> Answer Questions
+            </button>
+          </div>
+        </div>
+      `;
+      
+      element.innerHTML = `
+        <div class="message-content">${questionsHTML}</div>
+        <div class="message-timestamp">${timestamp}</div>
+      `;
+      
+      // Add event listener for the answer button
+      const answerBtn = element.querySelector('.answer-questions-btn');
+      if (answerBtn) {
+        const questions = [];
+        const questionItems = element.querySelectorAll('.clarification-questions li');
+        questionItems.forEach(item => {
+          questions.push(item.textContent.trim());
+        });
+        
+        answerBtn.addEventListener('click', () => {
+          showAnswerQuestionsDialog(questions);
+        });
+      }
+      break;
+      
+    default:
+      // basic message (user, system, etc)
+      messageContent = mainContent.replace(/\n/g, '<br>');
+      element.innerHTML = `
+        <div class="message-content">${messageContent}</div>
+        <div class="message-timestamp">${timestamp}</div>
+      `;
+  }
 }
 
-function renderQuestionsMessage(element, content, options = {}) {
-  // Extract thinking content if present
-  const thinkingContent = extractThinking(content);
-  
-  // Remove thinking tags to get just the questions
-  const questionsContent = removeThinking(content);
-  
-  // Add thinking message first if present
-  if (thinkingContent) {
-    const thinkingDiv = document.createElement('div');
-    thinkingDiv.className = 'thinking-message';
-    renderThinkingMessage(thinkingDiv, thinkingContent);
-    conversationHistory.appendChild(thinkingDiv);
-  }
-  
-  // Process questions - extract numbered items
-  const questionLines = questionsContent.split('\n')
-    .filter(line => /^\d+\./.test(line.trim()))
-    .map(line => `<li>${line.replace(/^\d+\./, '').trim().replace(/^["']|["']$/g, '')}</li>`)
-    .join('');
-  
-  // Create HTML for questions
-  const questionsHTML = `
-    <div class="clarification-questions">
-      <h4>Clarification Questions:</h4>
-      <ul>
-        ${questionLines}
-      </ul>
-      <div class="clarification-actions">
-        <button class="secondary-button small-button answer-questions-btn" style="background-color: #f0ebff; color: #6B3FA0; border-color: #d4c6ff;">
-          <i class="fa-solid fa-reply"></i> Answer Questions
-        </button>
-      </div>
-    </div>
-  `;
-  
-  element.innerHTML = `
-    <div class="message-content">${questionsHTML}</div>
-    <div class="message-timestamp">${formatTimestamp(new Date())}</div>
-  `;
-  
-  // Add event listener for the answer button
-  const answerBtn = element.querySelector('.answer-questions-btn');
-  if (answerBtn) {
-    const questions = [];
-    const questionItems = element.querySelectorAll('.clarification-questions li');
-    questionItems.forEach(item => {
-      questions.push(item.textContent.trim());
-    });
-    
-    answerBtn.addEventListener('click', () => {
-      showAnswerQuestionsDialog(questions);
-    });
-  }
-}
-
-function renderThinkingMessage(element, content) {
+// Helper for rendering just the thinking content
+function renderThinkingContent(element, content) {
   // Format thinking content with markdown-like styling
   const formattedThinking = content
     .split('\n')
@@ -1268,13 +1246,6 @@ function renderThinkingMessage(element, content) {
       <h4>AI Thinking:</h4>
       <ul>${formattedThinking}</ul>
     </div>
-  `;
-}
-
-function renderBasicMessage(element, content, options = {}) {
-  element.innerHTML = `
-    <div class="message-content">${content.replace(/\n/g, '<br>')}</div>
-    <div class="message-timestamp">${formatTimestamp(new Date())}</div>
   `;
 }
 
