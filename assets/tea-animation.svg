@@ -1,28 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
-  <!-- Tea cup -->
+  <!-- Tea cup  -->
   <g>
-    <path d="M20,40 L80,40 L70,80 L30,80 Z" fill="#fff" stroke="#333" stroke-width="2"/>
-    <path d="M25,40 L75,40 L67,75 L33,75 Z" fill="#f9d5ba" stroke="none">
+    <!-- Cup body  -->
+    <path d="M30,45 C30,42 35,40 50,40 C65,40 70,42 70,45 L67,75 C66,78 60,80 50,80 C40,80 34,78 33,75 Z" fill="#fff" stroke="#333" stroke-width="1.5" stroke-linejoin="round"/>
+    
+    <!-- Tea handle - -->
+    <path d="M70,50 Q78,50 78,60 Q78,70 70,70" fill="none" stroke="#333" stroke-width="1.5" stroke-linecap="round"/>
+    
+    <!-- Tea liquid - -->
+    <path d="M33,48 C33,46 37,45 50,45 C63,45 67,46 67,48 L64.5,70 C63.5,72 58,74 50,74 C42,74 36.5,72 35.5,70 Z" fill="#f9d5ba" stroke="none">
       <animate attributeName="fill" values="#f9d5ba;#d4a76a;#f9d5ba" dur="3s" repeatCount="indefinite" />
     </path>
     
-    <!-- Tea handle -->
-    <path d="M78,50 Q90,50 90,60 Q90,70 80,70" fill="none" stroke="#333" stroke-width="2"/>
-    
-    <!-- Steam animation -->
-    <path d="M40,30 Q45,20 50,30 Q55,20 60,30" fill="none" stroke="#aaa" stroke-width="2" opacity="0.7">
-      <animate attributeName="d" values="M40,30 Q45,20 50,30 Q55,20 60,30;M40,20 Q45,10 50,20 Q55,10 60,20;M40,30 Q45,20 50,30 Q55,20 60,30" dur="3s" repeatCount="indefinite" />
-      <animate attributeName="opacity" values="0.7;0.3;0.7" dur="3s" repeatCount="indefinite" />
+    <!-- S-curved steam animations -->
+    <path d="M40,30 Q43,25 40,20 Q37,15 40,10" fill="none" stroke="#aaa" stroke-width="1.5" opacity="0.7" stroke-linecap="round">
+      <animate attributeName="d" values="M40,30 Q43,25 40,20 Q37,15 40,10;M40,35 Q43,30 40,25 Q37,20 40,15;M40,30 Q43,25 40,20 Q37,15 40,10" dur="2.5s" repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0.7;0.3;0.7" dur="2.5s" repeatCount="indefinite" />
     </path>
     
-    <path d="M35,25 Q40,15 45,25" fill="none" stroke="#aaa" stroke-width="1.5" opacity="0.5">
-      <animate attributeName="d" values="M35,25 Q40,15 45,25;M35,15 Q40,5 45,15;M35,25 Q40,15 45,25" dur="2.5s" repeatCount="indefinite" />
-      <animate attributeName="opacity" values="0.5;0.2;0.5" dur="2.5s" repeatCount="indefinite" />
+    <path d="M50,28 Q53,23 50,18 Q47,13 50,8" fill="none" stroke="#aaa" stroke-width="1.7" opacity="0.5" stroke-linecap="round">
+      <animate attributeName="d" values="M50,28 Q53,23 50,18 Q47,13 50,8;M50,33 Q53,28 50,23 Q47,18 50,13;M50,28 Q53,23 50,18 Q47,13 50,8" dur="3s" repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0.6;0.2;0.6" dur="3s" repeatCount="indefinite" />
     </path>
     
-    <path d="M55,25 Q60,15 65,25" fill="none" stroke="#aaa" stroke-width="1.5" opacity="0.5">
-      <animate attributeName="d" values="M55,25 Q60,15 65,25;M55,15 Q60,5 65,15;M55,25 Q60,15 65,25" dur="2.8s" repeatCount="indefinite" />
-      <animate attributeName="opacity" values="0.5;0.2;0.5" dur="2.8s" repeatCount="indefinite" />
+    <path d="M60,30 Q63,25 60,20 Q57,15 60,10" fill="none" stroke="#aaa" stroke-width="1.5" opacity="0.6" stroke-linecap="round">
+      <animate attributeName="d" values="M60,30 Q63,25 60,20 Q57,15 60,10;M60,35 Q63,30 60,25 Q57,20 60,15;M60,30 Q63,25 60,20 Q57,15 60,10" dur="2.8s" repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0.7;0.3;0.7" dur="2.8s" repeatCount="indefinite" />
     </path>
+    
   </g>
 </svg>
