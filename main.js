@@ -95,36 +95,26 @@ class SessionManager {
     try {
       this.ensureDirectoryExists();
       
-      const files = fs.readdirSync(this.baseDir)
-        .filter(file => file.endsWith('.json'));
-      
-      const sessions = files.map(file => {
-        try {
-          const filePath = path.join(this.baseDir, file);
-          const rawData = fs.readFileSync(filePath, 'utf8');
-          const sessionData = JSON.parse(rawData);
-          const id = path.basename(file, '.json');
-          
-          return {
-            id,
-            title: sessionData.title,
-            patientName: sessionData.patientName,
-            savedAt: sessionData.savedAt,
-            messageCount: sessionData.messages?.length || 0
-          };
-        } catch (err) {
-          console.error(`Error reading session file ${file}:`, err);
-          return null;
-        }
-      })
-      .filter(Boolean)
-      .sort((a, b) => {
-        // sort by saved date (newest first)
-        if (a.savedAt && b.savedAt) {
-          return new Date(b.savedAt) - new Date(a.savedAt);
-        }
-        return 0;
-      });
+      const sessions = fs.readdirSync(this.baseDir)
+        .filter(file => file.endsWith('.json'))
+        .map(file => {
+          try {
+            const filePath = path.join(this.baseDir, file);
+            const sessionData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+            return {
+              id: path.basename(file, '.json'),
+              title: sessionData.title,
+              patientName: sessionData.patientName,
+              savedAt: sessionData.savedAt,
+              messageCount: sessionData.messages?.length || 0
+            };
+          } catch (err) {
+            console.error(`Error reading session file ${file}:`, err);
+            return null;
+          }
+        })
+        .filter(Boolean)
+        .sort((a, b) => new Date(b.savedAt || 0) - new Date(a.savedAt || 0));
       
       return sessions;
     } catch (error) {
@@ -217,153 +207,80 @@ function createIpcHandler(handlerFn, errorOptions = {}) {
   };
 }
 
+// Function to register multiple handlers at once
+function registerIpcHandlers(handlers) {
+  Object.entries(handlers).forEach(([channel, handler]) => {
+    ipcMain.handle(channel, createIpcHandler(handler.fn, handler.options));
+  });
+}
+
 // IPC Handlers - Ollama client functions
-ipcMain.handle('generate-report', createIpcHandler(
-  async (event, notes) => await ollamaClient.generateReport(notes),
-  { errorMessage: 'Failed to generate report' }
-));
-
-ipcMain.handle('generate-clarification-questions', createIpcHandler(
-  async (event, notes) => await ollamaClient.generateClarificationQuestions(notes),
-  { errorMessage: 'Failed to generate clarification questions', consoleOnly: true, fallbackValue: [] }
-));
-
-ipcMain.handle('generate-report-with-clarifications', createIpcHandler(
-  async (event, notes, clarifications) => await ollamaClient.generateReportWithClarifications(notes, clarifications),
-  { errorMessage: 'Failed to generate report with clarifications' }
-));
-
-ipcMain.handle('generate-conversational-response', createIpcHandler(
-  async (event, contextPrompt) => await ollamaClient.generateConversationalResponse(contextPrompt),
-  { errorMessage: 'Failed to generate response' }
-));
-
-// IPC Handlers - Ollama connection and settings
-ipcMain.handle('check-ollama-connection', createIpcHandler(
-  async () => await ollamaClient.checkConnection(),
-  { errorMessage: 'Failed to check Ollama connection', consoleOnly: true, fallbackValue: false }
-));
-
-ipcMain.handle('get-ollama-models', createIpcHandler(
-  async () => await ollamaClient.getAvailableModels(),
-  { errorMessage: 'Failed to get Ollama models', consoleOnly: true, fallbackValue: [] }
-));
-
-ipcMain.handle('set-ollama-model', createIpcHandler(
-  async (event, model) => {
-    ollamaClient.setModel(model);
-    return true;
+registerIpcHandlers({
+  'generate-report': {
+    fn: async (event, notes) => await ollamaClient.generateReport(notes),
+    options: { errorMessage: 'Failed to generate report' }
   },
-  { errorMessage: 'Failed to set Ollama model', consoleOnly: true, fallbackValue: false }
-));
-
-ipcMain.handle('get-prompt-file', createIpcHandler(
-  async () => ollamaClient.getPromptFile(),
-  { errorMessage: 'Failed to get prompt file', consoleOnly: true, fallbackValue: 'v3.txt' }
-));
-
-ipcMain.handle('set-prompt-file', createIpcHandler(
-  async (event, promptFile) => {
-    ollamaClient.setPromptFile(promptFile);
-    return true;
+  'generate-clarification-questions': {
+    fn: async (event, notes) => await ollamaClient.generateClarificationQuestions(notes),
+    options: { errorMessage: 'Failed to generate clarification questions', consoleOnly: true, fallbackValue: [] }
   },
-  { errorMessage: 'Failed to set prompt file', consoleOnly: true, fallbackValue: false }
-));
-
-// IPC Handlers - System information
-ipcMain.handle('get-system-info', createIpcHandler(
-  async () => await ollamaClient.getSystemInfo(),
-  { errorMessage: 'Failed to get system info', consoleOnly: true, fallbackValue: null }
-));
-
-ipcMain.handle('evaluate-model-compatibility', createIpcHandler(
-  async (event, modelName) => {
-    const systemInfo = await ollamaClient.getSystemInfo();
-    return ollamaClient.evaluateModelCompatibility(modelName, systemInfo);
+  'generate-report-with-clarifications': {
+    fn: async (event, notes, clarifications) => await ollamaClient.generateReportWithClarifications(notes, clarifications),
+    options: { errorMessage: 'Failed to generate report with clarifications' }
   },
-  { 
-    errorMessage: 'Failed to evaluate model compatibility',
-    consoleOnly: true, 
-    fallbackValue: {
-      modelSizeInB: null,
-      comfortLevel: 'Unknown',
-      message: 'Could not determine compatibility.',
-      loadingMessage: null
-    }
-  }
-));
-
-// Session management handlers using the SessionManager
-ipcMain.handle('save-session', createIpcHandler(
-  async (event, sessionData) => sessionManager.save(sessionData),
-  { 
-    errorMessage: 'Failed to save session', 
-    consoleOnly: false, 
-    fallbackValue: { success: false, error: 'Failed to save session' } 
-  }
-));
-
-ipcMain.handle('load-sessions-list', createIpcHandler(
-  async () => sessionManager.loadList(),
-  { errorMessage: 'Failed to load sessions list', consoleOnly: true, fallbackValue: [] }
-));
-
-ipcMain.handle('load-session', createIpcHandler(
-  async (event, sessionId) => sessionManager.load(sessionId),
-  { errorMessage: 'Failed to load session', consoleOnly: false, fallbackValue: null }
-));
-
-ipcMain.handle('delete-session', createIpcHandler(
-  async (event, sessionId) => sessionManager.delete(sessionId),
-  { errorMessage: 'Failed to delete session', consoleOnly: true, fallbackValue: false }
-));
-
-// Add new cleanup handler
-ipcMain.handle('cleanup-sessions', createIpcHandler(
-  async () => sessionManager.cleanup(),
-  { errorMessage: 'Failed to clean up sessions', consoleOnly: true, fallbackValue: 0 }
-));
-
-ipcMain.handle('save-report', createIpcHandler(
-  async (event, reportText, suggestedName) => {
-    const defaultPath = suggestedName 
-      ? path.join(app.getPath('documents'), suggestedName) 
-      : path.join(app.getPath('documents'), 'physio-report.txt');
-      
-    const { filePath } = await dialog.showSaveDialog({
-      defaultPath,
-      filters: [
-        { name: 'Text Files', extensions: ['txt'] },
-        { name: 'All Files', extensions: ['*'] }
-      ]
-    });
-    
-    if (filePath) {
-      fs.writeFileSync(filePath, reportText);
+  'generate-conversational-response': {
+    fn: async (event, contextPrompt) => await ollamaClient.generateConversationalResponse(contextPrompt),
+    options: { errorMessage: 'Failed to generate response' }
+  },
+  // Ollama connection and settings
+  'check-ollama-connection': {
+    fn: async () => await ollamaClient.checkConnection(),
+    options: { errorMessage: 'Failed to check Ollama connection', consoleOnly: true, fallbackValue: false }
+  },
+  'get-ollama-models': {
+    fn: async () => await ollamaClient.getAvailableModels(),
+    options: { errorMessage: 'Failed to get Ollama models', consoleOnly: true, fallbackValue: [] }
+  },
+  'set-ollama-model': {
+    fn: async (event, model) => {
+      ollamaClient.setModel(model);
       return true;
-    }
-    return false;
+    },
+    options: { errorMessage: 'Failed to set Ollama model', consoleOnly: true, fallbackValue: false }
   },
-  { errorMessage: 'Failed to save report', consoleOnly: false, fallbackValue: false }
-));
-
-ipcMain.handle('load-notes', createIpcHandler(
-  async () => {
-    const { filePaths } = await dialog.showOpenDialog({
-      properties: ['openFile'],
-      filters: [
-        { name: 'Text Files', extensions: ['txt'] },
-        { name: 'All Files', extensions: ['*'] }
-      ]
-    });
-    
-    if (filePaths && filePaths.length > 0) {
-      return fs.readFileSync(filePaths[0], 'utf8');
-    }
-    return null;
+  'get-prompt-file': {
+    fn: async () => ollamaClient.getPromptFile(),
+    options: { errorMessage: 'Failed to get prompt file', consoleOnly: true, fallbackValue: 'v3.txt' }
   },
-  { errorMessage: 'Failed to load notes', consoleOnly: false, fallbackValue: null }
-));
+  'set-prompt-file': {
+    fn: async (event, promptFile) => {
+      ollamaClient.setPromptFile(promptFile);
+      return true;
+    },
+    options: { errorMessage: 'Failed to set prompt file', consoleOnly: true, fallbackValue: false }
+  },
+  // System information
+  'get-system-info': {
+    fn: async () => await ollamaClient.getSystemInfo(),
+    options: { errorMessage: 'Failed to get system info', consoleOnly: true, fallbackValue: null }
+  },
+  'evaluate-model-compatibility': {
+    fn: async (event, modelName) => {
+      const systemInfo = await ollamaClient.getSystemInfo();
+      return ollamaClient.evaluateModelCompatibility(modelName, systemInfo);
+    },
+    options: { 
+      errorMessage: 'Failed to evaluate model compatibility',
+      consoleOnly: true, 
+      fallbackValue: {
+        modelSizeInB: null,
+        comfortLevel: 'Unknown',
+        message: 'Could not determine compatibility.',
+        loadingMessage: null
+      }
+    }
+  }
+});
 
 // File loading utility function
 function loadContentFile(basePath, filename) {
@@ -379,28 +296,94 @@ function loadContentFile(basePath, filename) {
   }
 }
 
-ipcMain.handle('load-doc-file', createIpcHandler(
-  async (event, filename) => {
-    const content = loadContentFile('docs', filename);
-    if (content === null) {
-      return `Error: Document file "${filename}" not found`;
+// Session management handlers
+registerIpcHandlers({
+  'save-session': {
+    fn: async (event, sessionData) => sessionManager.save(sessionData),
+    options: { 
+      errorMessage: 'Failed to save session', 
+      consoleOnly: false, 
+      fallbackValue: { success: false, error: 'Failed to save session' } 
     }
-    return content;
   },
-  { 
-    errorMessage: 'Failed to load document file', 
-    consoleOnly: true, 
-    fallbackValue: 'Error: Could not load the requested document file' 
+  'load-sessions-list': {
+    fn: async () => sessionManager.loadList(),
+    options: { errorMessage: 'Failed to load sessions list', consoleOnly: true, fallbackValue: [] }
+  },
+  'load-session': {
+    fn: async (event, sessionId) => sessionManager.load(sessionId),
+    options: { errorMessage: 'Failed to load session', consoleOnly: false, fallbackValue: null }
+  },
+  'delete-session': {
+    fn: async (event, sessionId) => sessionManager.delete(sessionId),
+    options: { errorMessage: 'Failed to delete session', consoleOnly: true, fallbackValue: false }
+  },
+  'cleanup-sessions': {
+    fn: async () => sessionManager.cleanup(),
+    options: { errorMessage: 'Failed to clean up sessions', consoleOnly: true, fallbackValue: 0 }
+  },
+  // File operations
+  'save-report': {
+    fn: async (event, reportText, suggestedName) => {
+      const defaultPath = suggestedName 
+        ? path.join(app.getPath('documents'), suggestedName) 
+        : path.join(app.getPath('documents'), 'physio-report.txt');
+        
+      const { filePath } = await dialog.showSaveDialog({
+        defaultPath,
+        filters: [
+          { name: 'Text Files', extensions: ['txt'] },
+          { name: 'All Files', extensions: ['*'] }
+        ]
+      });
+      
+      if (filePath) {
+        fs.writeFileSync(filePath, reportText);
+        return true;
+      }
+      return false;
+    },
+    options: { errorMessage: 'Failed to save report', consoleOnly: false, fallbackValue: false }
+  },
+  'load-notes': {
+    fn: async () => {
+      const { filePaths } = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: [
+          { name: 'Text Files', extensions: ['txt'] },
+          { name: 'All Files', extensions: ['*'] }
+        ]
+      });
+      
+      if (filePaths && filePaths.length > 0) {
+        return fs.readFileSync(filePaths[0], 'utf8');
+      }
+      return null;
+    },
+    options: { errorMessage: 'Failed to load notes', consoleOnly: false, fallbackValue: null }
+  },
+  'load-doc-file': {
+    fn: async (event, filename) => {
+      const content = loadContentFile('docs', filename);
+      if (content === null) {
+        return `Error: Document file "${filename}" not found`;
+      }
+      return content;
+    },
+    options: { 
+      errorMessage: 'Failed to load document file', 
+      consoleOnly: true, 
+      fallbackValue: 'Error: Could not load the requested document file' 
+    }
+  },
+  'load-prompt-file': {
+    fn: async (event, filename) => {
+      const content = loadContentFile('prompts', filename);
+      if (content === null) {
+        console.warn(`Prompt file not found: ${filename}`);
+      }
+      return content;
+    },
+    options: { errorMessage: 'Failed to load prompt file', consoleOnly: true, fallbackValue: null }
   }
-));
-
-ipcMain.handle('load-prompt-file', createIpcHandler(
-  async (event, filename) => {
-    const content = loadContentFile('prompts', filename);
-    if (content === null) {
-      console.warn(`Prompt file not found: ${filename}`);
-    }
-    return content;
-  },
-  { errorMessage: 'Failed to load prompt file', consoleOnly: true, fallbackValue: null }
-));
+});
