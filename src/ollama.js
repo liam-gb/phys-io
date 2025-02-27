@@ -45,6 +45,7 @@ const store = {
 class PromptManager {
   constructor(basePath) {
     this.basePath = basePath || path.join(__dirname, '..', 'prompts');
+    console.log(`||| Initializing PromptManager with base path: ${this.basePath}`);
     this.cache = {}; // Cache loaded prompts
   }
   
@@ -52,22 +53,31 @@ class PromptManager {
     // Normalize name to ensure it ends with .txt
     const promptName = name.endsWith('.txt') ? name : `${name}.txt`;
     
+    console.log(`||| Getting prompt template: ${promptName}`);
+    
     // Check cache first
     if (this.cache[promptName]) {
+      console.log(`||| Found template in cache: ${promptName}`);
       return this.cache[promptName];
     }
     
     // Load from disk
     try {
       const promptPath = path.join(this.basePath, promptName);
+      console.log(`||| Loading template from disk: ${promptPath}`);
+      
       if (fs.existsSync(promptPath)) {
+        console.log(`||| Template file exists, reading...`);
         const template = fs.readFileSync(promptPath, 'utf8');
         this.cache[promptName] = template;
+        console.log(`||| Successfully loaded template (${template.length} chars)`);
         return template;
       }
       
+      console.log(`||| Prompt file not found: ${promptPath}`);
       throw new Error(`Prompt file not found: ${promptName}`);
     } catch (error) {
+      console.error(`||| Error reading prompt file ${promptName}:`, error);
       errorHandler.log(`Error reading prompt file ${promptName}`, error);
       throw error;
     }
@@ -154,23 +164,31 @@ class OllamaClient {
   // Helper method to make text generation requests to Ollama
   async makeOllamaRequest(prompt) {
     try {
+      console.log(`||| ollama.js - Making request with model: ${this.model}, prompt length: ${prompt ? prompt.length : 0}`);
       const result = await this.makeHttpRequest('/api/generate', 'POST', {
         model: this.model,
         prompt: prompt,
         stream: false
       });
       
+      console.log(`||| ollama.js - Request successful, got response: ${result && result.response ? 'yes' : 'no'}`);
       return result.response;
     } catch (error) {
+      console.error(`||| ollama.js - makeOllamaRequest error:`, error);
       throw error;
     }
   }
 
   async generateReport(notes) {
     try {
+      console.log(`||| ollama.js - generateReport starting`);
       const prompt = this.promptManager.getPrompt(this.promptFile, { notes });
-      return await this.makeOllamaRequest(prompt);
+      console.log(`||| ollama.js - Calling makeOllamaRequest for report`);
+      const result = await this.makeOllamaRequest(prompt);
+      console.log(`||| ollama.js - Report generated, length: ${result ? result.length : 0}`);
+      return result;
     } catch (error) {
+      console.error(`||| ollama.js - Error generating report:`, error);
       errorHandler.log('Error generating report', error);
       throw error;
     }
@@ -178,10 +196,14 @@ class OllamaClient {
 
   async generateClarificationQuestions(notes, generatedReport = "") {
     try {
+      console.log('||| ollama.js - generateClarificationQuestions starting');
       const templateName = 'clarification-questions';
-      const promptTemplate = this.promptManager.getPromptTemplate(templateName);
       
-      const prompt = `
+      try {
+        const promptTemplate = this.promptManager.getPromptTemplate(templateName);
+        console.log('||| ollama.js - got template:', promptTemplate ? 'yes' : 'no');
+        
+        const prompt = `
 ${promptTemplate}
 
 ORIGINAL CLINICAL NOTES:
@@ -193,8 +215,29 @@ ${generatedReport}` : ""}
 Provide 2-4 clarification questions that would help improve this report:
 `;
 
-      return await this.makeOllamaRequest(prompt);
+        // Make the request to generate clarification questions
+        console.log('||| ollama.js - Making request for questions with model:', this.model);
+        const response = await this.makeOllamaRequest(prompt);
+        console.log('||| ollama.js - Received questions response:', response ? 'yes' : 'no');
+        
+        if (response) {
+          // Log some basic info about the response
+          console.log('||| ollama.js - Response length:', response.length);
+          console.log('||| ollama.js - Response excerpt:', response.substring(0, 50) + '...');
+          
+          // Check if we got a structured response with questions
+          const questionLines = response.split('\n').filter(line => /^\d+\./.test(line.trim()));
+          console.log('||| ollama.js - Found question lines:', questionLines.length);
+        }
+        
+        // Simply return the response - the renderer will handle extraction
+        return response;
+      } catch (innerError) {
+        console.error('||| ollama.js - Inner error getting template:', innerError);
+        throw innerError;
+      }
     } catch (error) {
+      console.error('||| ollama.js - Error generating clarification questions:', error);
       errorHandler.log('Error generating clarification questions', error);
       throw error;
     }

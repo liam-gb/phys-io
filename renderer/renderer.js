@@ -40,13 +40,9 @@ const AUTOSAVE_DELAY = 5000; // 5 seconds
 
 // Helper function to clean up empty/problematic sessions
 async function cleanupProblematicSessions() {
-  console.log('Starting cleanup of problematic sessions...');
-  
   try {
     // Use the centralized cleanup method from SessionManager
     const deletedCount = await window.api.sessions.cleanup();
-    
-    console.log(`Cleanup complete. Removed ${deletedCount} problematic sessions.`);
     return deletedCount > 0;
   } catch (error) {
     console.error('Error during cleanup:', error);
@@ -140,7 +136,6 @@ let modelCompatibilityInfo = {};
 async function getSystemInfo() {
   try {
     systemInfo = await window.api.ollama.getSystemInfo();
-    console.log('System info:', systemInfo);
     return systemInfo;
   } catch (error) {
     console.error('Failed to get system info:', error);
@@ -153,7 +148,6 @@ async function evaluateModelCompatibility(modelName, forceRefresh = false) {
   try {
     // Return cached result unless forceRefresh is true
     if (!forceRefresh && modelCompatibilityCache[modelName]) {
-      console.log(`Using cached compatibility for ${modelName}`);
       return modelCompatibilityCache[modelName];
     }
     
@@ -162,8 +156,6 @@ async function evaluateModelCompatibility(modelName, forceRefresh = false) {
     
     // Cache the result
     modelCompatibilityCache[modelName] = compatibility;
-    
-    console.log(`Evaluated compatibility for ${modelName}:`, compatibility);
     return compatibility;
   } catch (error) {
     errorHandler.log(`Failed to evaluate compatibility for ${modelName}`, error);
@@ -314,7 +306,6 @@ async function sendMessage() {
   if (currentSession.isInitialMessage) {
     await generateInitialReport(text);
     currentSession.isInitialMessage = false;
-    // Note: generateSessionTitle is now called from within generateInitialReport
   } else {
     await generateResponse();
   }
@@ -365,11 +356,19 @@ async function generateInitialReport(notes) {
           // Add system message indicating letter is ready
           addSystemMessage("Your letter is ready.");
           
-          // Generate session title - wait for this to complete before moving on
+          // Add standard loading message for clarification questions right away
+          const loadingId = addLoadingMessage('clarification');
+          
+          // Generate session title while questions are loading
           await generateSessionTitle();
           
-          // Generate clarification questions - explicitly await this instead of using setTimeout
-          await generateClarificationQuestions(notes, response);
+          // Generate clarification questions - loading message already shown
+          try {
+            await generateClarificationQuestions(notes, response, loadingId);
+          } catch (clarErr) {
+            // Make sure loading message is removed in case of error
+            removeLoadingMessage(loadingId);
+          }
         } catch (err) {
           console.error('Error in UI update sequence:', err);
         }
@@ -385,50 +384,60 @@ async function generateInitialReport(notes) {
 }
 
 // Generate clarification questions based on the notes and generated report
-async function generateClarificationQuestions(notes, reportText) {
-  console.log('Starting clarification questions generation');
-  
-  // Show loading message for questions generation
-  const loadingId = addLoadingMessage('clarification');
+async function generateClarificationQuestions(notes, reportText, existingLoadingId = null) {
+  // Only create loading message if not provided by the caller
+  let loadingId = existingLoadingId;
+  if (!loadingId) {
+    loadingId = addLoadingMessage('clarification');
+  }
   
   try {
-    console.log('Calling API to generate clarification questions');
     const questionsResponse = await window.api.ollama.generateClarificationQuestions(notes, reportText);
-    console.log('Received response from API:', questionsResponse ? 'non-empty' : 'empty');
     
     // Remove loading message
-    removeLoadingMessage(loadingId);
+    if (loadingId) {
+      removeLoadingMessage(loadingId);
+    }
     
     // Check model compatibility for tea-time message
     const compatibility = await evaluateModelCompatibility(currentSession.model);
     
-    // Process the response - could be raw text with thinking tags
-    console.log('Processing clarification questions response:', questionsResponse);
+    // Process the response - extract numbered questions
     let extractedQuestions = [];
     
-    // Rest of your existing function...
+    if (questionsResponse && typeof questionsResponse === 'string') {
+      extractedQuestions = questionsResponse
+        .split('\n')
+        .filter(line => /^\d+\./.test(line.trim()))
+        .map(line => line.trim());
+    }
     
     if (extractedQuestions.length > 0) {
-      // Small delay to ensure loading message is gone
-      setTimeout(() => {
-        // Add the questions with the original response content
-        // This will include the thinking section if present
-        addMessageToUI('questions', questionsResponse);
-        
-        // Store questions in the session
-        currentSession.messages.push({
-          role: 'system',
-          content: questionsResponse,
-          timestamp: new Date().toISOString(),
-          isQuestions: true,
-          questions: extractedQuestions
-        });
-      }, 300);
+      // Add the questions with the original response content
+      // This will include the thinking section if present
+      addMessageToUI('questions', questionsResponse);
+      
+      // Store questions in the session
+      currentSession.messages.push({
+        role: 'system',
+        content: questionsResponse,
+        timestamp: new Date().toISOString(),
+        isQuestions: true,
+        questions: extractedQuestions
+      });
+      
+      // Schedule autosave to make sure the questions are saved
+      scheduleAutosave();
+    } else {
+      // Add a notice if no questions were found
+      addSystemMessage("No clarification questions were generated.");
     }
     
     return true; // Return success so we can await it
   } catch (error) {
-    removeLoadingMessage(loadingId);
+    if (loadingId) {
+      removeLoadingMessage(loadingId);
+    }
     errorHandler.log('Error generating clarification questions', error);
     return false; // Return failure but don't reject the promise
   }
@@ -807,7 +816,9 @@ function updateSessionInSidebar() {
 // Generate a meaningful title for the conversation
 async function generateSessionTitle() {
   // Only generate title after we have at least one response
-  if (currentSession.messages.length < 2) return;
+  if (currentSession.messages.length < 2) {
+    return;
+  }
   
   try {
     const initialNotes = currentSession.messages[0].content;
@@ -818,7 +829,6 @@ async function generateSessionTitle() {
     
     // If the prompt file fails to load, use a default
     if (!titlePromptTemplate) {
-      console.warn('Failed to load session-title.txt, using default');
       titlePromptTemplate = `
 You are helping to generate a short, descriptive title for a physiotherapy session.
 Based on the following information, create a concise title (3-5 words) that summarizes the key issue or treatment:
@@ -934,18 +944,15 @@ async function loadSession(sessionId) {
 }
 
 function startNewSession() {
-  console.log('Starting new session...');
   
   try {
     // Clear conversation history
     conversationHistory.innerHTML = '';
     
     // Add initial system message
-    console.log('Adding system message');
     addSystemMessage('Enter clinical notes to generate a letter');
     
     // Reset session
-    console.log('Resetting session state, current model value:', modelSelect.value);
     currentSession = {
       id: null,
       title: null,
@@ -958,16 +965,13 @@ function startNewSession() {
     };
     
     // Reset active session in sidebar
-    console.log('Resetting active sessions in sidebar');
     document.querySelectorAll('.session-item').forEach(item => {
       item.classList.remove('active');
     });
     
     // Autosave the new session
-    console.log('Saving the new session');
     saveSession();
     
-    console.log('New session creation complete');
   } catch (error) {
     console.error('Error creating new session:', error);
   }
@@ -1305,14 +1309,12 @@ class LoadingManager {
         // Check for any orphaned loading messages
         document.querySelectorAll('.loading').forEach(msg => {
           if (!msg.id || msg.id !== id) {
-            console.log('Removing orphaned loading message');
             msg.remove();
           }
         });
       }, 300);
     } else {
       // Fallback cleanup if element not found
-      console.log('Loading element not found, checking for any loading messages');
       document.querySelectorAll('.loading').forEach(msg => {
         msg.remove();
       });
@@ -1434,6 +1436,10 @@ function formatDate(date) {
 // Format the report text with HTML
 // Extract thinking content from text
 function extractThinking(text) {
+  if (!text) {
+    return null;
+  }
+  
   // Method 1: Try to extract content from thinking tags
   const thinkingMatch = text.match(/<thinking>[\s\S]*?<\/thinking>/i);
   if (thinkingMatch && thinkingMatch[0]) {
@@ -1466,6 +1472,10 @@ function extractThinking(text) {
 
 // Remove thinking tags and their content from text
 function removeThinking(text) {
+  if (!text) {
+    return '';
+  }
+  
   // First try to remove any complete thinking blocks
   const withoutThinking = text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
   
@@ -1751,7 +1761,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 toggleSidebarBtn.addEventListener('click', toggleSidebar);
-sendBtn.addEventListener('click', sendMessage);
+sendBtn.addEventListener('click', () => {
+  sendMessage();
+});
 userInput.addEventListener('input', () => {
   sendBtn.disabled = userInput.value.trim() === '';
 });
@@ -1775,6 +1787,7 @@ userInput.addEventListener('keydown', (e) => {
     if (userInput.value.trim() !== '') {
       sendMessage();
       e.preventDefault();
+    } else {
     }
   }
 });
@@ -1794,7 +1807,6 @@ confirmModal.addEventListener('click', (e) => {
 });
 
 modelSelect.addEventListener('change', async () => {
-  console.log('Dropdown changed to:', modelSelect.value);
 
   const newModel = modelSelect.value;
   currentSession.model = newModel;
@@ -1810,7 +1822,6 @@ modelSelect.addEventListener('change', async () => {
   }
   
   scheduleAutosave();
-  console.log('Model compatibility cache:', modelCompatibilityCache);
 
 });
 

@@ -12,10 +12,10 @@ const ollamaClient = require('./src/ollama');
 // Centralized error handler
 const errorHandler = {
   log: (message, error) => {
-    console.error(`Error: ${message}`, error);
+    console.error(`ERROR-LOG: ${message}`, error);
   },
   showError: (message, error) => {
-    console.error(`Error: ${message}`, error);
+    console.error(`ERROR-DIALOG: ${message}`, error);
     dialog.showErrorBox('Error', `${message}: ${error.message}`);
     return null;
   }
@@ -172,13 +172,17 @@ function createWindow() {
   mainWindow.setTitle('Phys.IO');
   
   // Only open DevTools in development
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.webContents.openDevTools();
-  }
+  // Always open DevTools during debugging
+  mainWindow.webContents.openDevTools();
 }
 
 // Initialize the SessionManager
 const sessionManager = new SessionManager(sessionsDirectory);
+
+// Set up debug log handler
+ipcMain.on('debug-log', (event, message) => {
+  console.log(`DEBUG: ${message}`);
+});
 
 // Initialize the app
 app.whenReady().then(async () => {

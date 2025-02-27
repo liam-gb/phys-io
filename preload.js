@@ -1,8 +1,18 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Add a custom logger for debugging
+const debugLog = (message) => {
+  console.log(`[RENDERER] ${message}`);
+  ipcRenderer.send('debug-log', message);
+};
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('api', {
+  // Debug logging
+  debug: {
+    log: (message) => debugLog(message)
+  },
   // App info
   versions: {
     node: () => process.versions.node,
