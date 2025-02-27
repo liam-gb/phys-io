@@ -43,28 +43,11 @@ async function cleanupProblematicSessions() {
   console.log('Starting cleanup of problematic sessions...');
   
   try {
-    // Get all sessions
-    const sessions = await window.api.sessions.loadList();
+    // Use the centralized cleanup method from SessionManager
+    const deletedCount = await window.api.sessions.cleanup();
     
-    // Find empty/problematic sessions
-    const problematicSessions = sessions.filter(session => {
-      return !session.title && !session.patientName;
-    });
-    
-    console.log(`Found ${problematicSessions.length} potentially problematic sessions`);
-    
-    // Delete them
-    for (const session of problematicSessions) {
-      console.log(`Cleaning up empty session: ${session.id}`);
-      try {
-        await window.api.sessions.delete(session.id);
-      } catch (err) {
-        console.error(`Failed to delete problematic session ${session.id}:`, err);
-      }
-    }
-    
-    console.log('Cleanup complete');
-    return problematicSessions.length > 0;
+    console.log(`Cleanup complete. Removed ${deletedCount} problematic sessions.`);
+    return deletedCount > 0;
   } catch (error) {
     console.error('Error during cleanup:', error);
     return false;

@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('api', {
     save: (sessionData) => ipcRenderer.invoke('save-session', sessionData),
     loadList: () => ipcRenderer.invoke('load-sessions-list'),
     load: (sessionId) => ipcRenderer.invoke('load-session', sessionId),
-    delete: (sessionId) => ipcRenderer.invoke('delete-session', sessionId)
+    delete: (sessionId) => ipcRenderer.invoke('delete-session', sessionId),
+    cleanup: () => ipcRenderer.invoke('cleanup-sessions')
   }
 });

@@ -10,16 +10,151 @@ const ollamaClient = require('./src/ollama');
 let mainWindow;
 const sessionsDirectory = path.join(app.getPath('userData'), 'sessions');
 
-// Ensure a directory exists
-function ensureDirectoryExists(dirPath) {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
+/**
+ * Session Manager class to handle all session operations
+ */
+class SessionManager {
+  constructor(baseDir) {
+    this.baseDir = baseDir;
+    this.ensureDirectoryExists();
   }
-  return dirPath;
-}
-
-function ensureSessionsDirectory() {
-  return ensureDirectoryExists(sessionsDirectory);
+  
+  ensureDirectoryExists() {
+    if (!fs.existsSync(this.baseDir)) {
+      fs.mkdirSync(this.baseDir, { recursive: true });
+    }
+  }
+  
+  getSessionPath(sessionId) {
+    return path.join(this.baseDir, `${sessionId}.json`);
+  }
+  
+  async save(sessionData) {
+    try {
+      this.ensureDirectoryExists();
+      
+      // ensure session has required fields
+      const timestamp = new Date().toISOString();
+      
+      // if no ID exists, create one
+      if (!sessionData.id) {
+        sessionData.id = crypto.randomBytes(16).toString('hex');
+      }
+      
+      // update timestamp
+      sessionData.savedAt = timestamp;
+      
+      // write to disk
+      const filePath = this.getSessionPath(sessionData.id);
+      fs.writeFileSync(filePath, JSON.stringify(sessionData, null, 2), 'utf8');
+      
+      return { success: true, id: sessionData.id };
+    } catch (error) {
+      console.error('Failed to save session:', error);
+      return { success: false, error: error.message };
+    }
+  }
+  
+  async load(sessionId) {
+    try {
+      const filePath = this.getSessionPath(sessionId);
+      
+      if (!fs.existsSync(filePath)) {
+        return null;
+      }
+      
+      const rawData = fs.readFileSync(filePath, 'utf8');
+      const sessionData = JSON.parse(rawData);
+      
+      // ensure the ID matches the filename
+      sessionData.id = sessionId;
+      
+      return sessionData;
+    } catch (error) {
+      console.error(`Failed to load session ${sessionId}:`, error);
+      return null;
+    }
+  }
+  
+  async delete(sessionId) {
+    try {
+      const filePath = this.getSessionPath(sessionId);
+      
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error(`Failed to delete session ${sessionId}:`, error);
+      return false;
+    }
+  }
+  
+  async loadList() {
+    try {
+      this.ensureDirectoryExists();
+      
+      const files = fs.readdirSync(this.baseDir)
+        .filter(file => file.endsWith('.json'));
+      
+      const sessions = files.map(file => {
+        try {
+          const filePath = path.join(this.baseDir, file);
+          const rawData = fs.readFileSync(filePath, 'utf8');
+          const sessionData = JSON.parse(rawData);
+          const id = path.basename(file, '.json');
+          
+          return {
+            id,
+            title: sessionData.title,
+            patientName: sessionData.patientName,
+            savedAt: sessionData.savedAt,
+            messageCount: sessionData.messages?.length || 0
+          };
+        } catch (err) {
+          console.error(`Error reading session file ${file}:`, err);
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        // sort by saved date (newest first)
+        if (a.savedAt && b.savedAt) {
+          return new Date(b.savedAt) - new Date(a.savedAt);
+        }
+        return 0;
+      });
+      
+      return sessions;
+    } catch (error) {
+      console.error('Failed to load sessions list:', error);
+      return [];
+    }
+  }
+  
+  async cleanup() {
+    try {
+      const sessions = await this.loadList();
+      
+      // find problematic sessions
+      const problematicSessions = sessions.filter(session => {
+        return !session.title && !session.patientName;
+      });
+      
+      console.log(`Found ${problematicSessions.length} problematic sessions to clean up`);
+      
+      // delete them
+      for (const session of problematicSessions) {
+        await this.delete(session.id);
+      }
+      
+      return problematicSessions.length;
+    } catch (error) {
+      console.error('Error during cleanup:', error);
+      return 0;
+    }
+  }
 }
 
 function createWindow() {
@@ -43,9 +178,11 @@ function createWindow() {
   }
 }
 
+// Initialize the SessionManager
+const sessionManager = new SessionManager(sessionsDirectory);
+
 // Initialize the app
 app.whenReady().then(async () => {
-  ensureSessionsDirectory();
   createWindow();
 });
 
@@ -156,38 +293,9 @@ ipcMain.handle('evaluate-model-compatibility', createIpcHandler(
   }
 ));
 
-// Helper to generate a unique ID
-function generateUniqueId() {
-  return crypto.randomBytes(16).toString('hex');
-}
-
-// Session management utilities
-function prepareSessionData(sessionData) {
-  if (!sessionData.id) {
-    sessionData.id = generateUniqueId();
-  }
-  
-  if (!sessionData.savedAt) {
-    sessionData.savedAt = new Date().toISOString();
-  }
-  
-  return sessionData;
-}
-
-function getSessionFilePath(sessionId) {
-  return path.join(sessionsDirectory, `${sessionId}.json`);
-}
-
-// Session management handlers
+// Session management handlers using the SessionManager
 ipcMain.handle('save-session', createIpcHandler(
-  async (event, sessionData) => {
-    ensureSessionsDirectory();
-    sessionData = prepareSessionData(sessionData);
-    const filePath = getSessionFilePath(sessionData.id);
-    
-    fs.writeFileSync(filePath, JSON.stringify(sessionData, null, 2), 'utf8');
-    return { success: true, id: sessionData.id };
-  },
+  async (event, sessionData) => sessionManager.save(sessionData),
   { 
     errorMessage: 'Failed to save session', 
     consoleOnly: false, 
@@ -196,73 +304,24 @@ ipcMain.handle('save-session', createIpcHandler(
 ));
 
 ipcMain.handle('load-sessions-list', createIpcHandler(
-  async () => {
-    ensureSessionsDirectory();
-    
-    const files = fs.readdirSync(sessionsDirectory)
-      .filter(file => file.endsWith('.json'));
-    
-    const sessions = files.map(file => {
-      try {
-        const filePath = path.join(sessionsDirectory, file);
-        const rawData = fs.readFileSync(filePath, 'utf8');
-        const sessionData = JSON.parse(rawData);
-        const id = path.basename(file, '.json');
-        
-        return {
-          id,
-          title: sessionData.title,
-          patientName: sessionData.patientName,
-          savedAt: sessionData.savedAt,
-          messageCount: sessionData.messages?.length || 0
-        };
-      } catch (err) {
-        console.error(`Error reading session file ${file}:`, err);
-        return null;
-      }
-    })
-    .filter(Boolean)
-    .sort((a, b) => {
-      if (a.savedAt && b.savedAt) {
-        return new Date(b.savedAt) - new Date(a.savedAt);
-      }
-      return 0;
-    });
-    
-    return sessions;
-  },
+  async () => sessionManager.loadList(),
   { errorMessage: 'Failed to load sessions list', consoleOnly: true, fallbackValue: [] }
 ));
 
 ipcMain.handle('load-session', createIpcHandler(
-  async (event, sessionId) => {
-    const filePath = getSessionFilePath(sessionId);
-    
-    if (!fs.existsSync(filePath)) {
-      return null;
-    }
-    
-    const rawData = fs.readFileSync(filePath, 'utf8');
-    const sessionData = JSON.parse(rawData);
-    
-    sessionData.id = sessionId;
-    
-    return sessionData;
-  },
+  async (event, sessionId) => sessionManager.load(sessionId),
   { errorMessage: 'Failed to load session', consoleOnly: false, fallbackValue: null }
 ));
 
 ipcMain.handle('delete-session', createIpcHandler(
-  async (event, sessionId) => {
-    const filePath = getSessionFilePath(sessionId);
-    
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      return true;
-    }
-    return false;
-  },
+  async (event, sessionId) => sessionManager.delete(sessionId),
   { errorMessage: 'Failed to delete session', consoleOnly: true, fallbackValue: false }
+));
+
+// Add new cleanup handler
+ipcMain.handle('cleanup-sessions', createIpcHandler(
+  async () => sessionManager.cleanup(),
+  { errorMessage: 'Failed to clean up sessions', consoleOnly: true, fallbackValue: 0 }
 ));
 
 ipcMain.handle('save-report', createIpcHandler(
