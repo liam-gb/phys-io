@@ -73,14 +73,6 @@ async function cleanupProblematicSessions() {
 
 // Initialize app
 async function initializeApp() {
-  console.log('Initializing app...');
-  
-  // Verify DOM elements are correctly loaded
-  console.log('DOM Elements check:');
-  console.log('- newSessionBtn:', newSessionBtn);
-  console.log('- sidebar:', sidebar);
-  console.log('- sessionsList:', sessionsList);
-  
   // Check connection and load models
   await checkOllamaConnection();
   
@@ -95,23 +87,17 @@ async function initializeApp() {
   
   // Create new session if none exists or we just did a cleanup
   if (sessionsList.innerHTML === '<div class="empty-state">No saved sessions</div>' || cleanupPerformed) {
-    console.log('No saved sessions found or cleanup performed, starting new session');
     startNewSession();
   } else {
     // Try to load most recent session
     const latestSession = sessionsList.querySelector('.session-item');
-    console.log('Found latest session:', latestSession);
     if (latestSession) {
       await loadSession(latestSession.dataset.id);
     }
   }
   
-  // Re-attach event listener to ensure it works
-  console.log('Re-attaching newSessionBtn event listener');
-  newSessionBtn.addEventListener('click', (event) => {
-    console.log('New Session button clicked (re-attached listener) - event:', event.type);
-    startNewSession();
-  });
+  // Set up the new session button once during initialization
+  newSessionBtn.addEventListener('click', () => startNewSession());
 }
 
 // Check Ollama connection
@@ -290,8 +276,7 @@ async function loadModels() {
 }
 
 function updateModelStatusDisplay(compatInfo) {
-  // Function kept for compatibility, but doesn't update any UI elements now
-  console.log('Model compatibility info:', compatInfo);
+  // Legacy function kept for compatibility
 }
 
 // Update compatibility info display
@@ -300,7 +285,6 @@ async function updateModelCompatibilityDisplay(modelName) {
     // Get compatibility info from cache or evaluate if needed
     const compatInfo = await evaluateModelCompatibility(modelName);
     updateModelStatusDisplay(compatInfo);
-    console.log(`Updated model compatibility display for ${modelName}: ${compatInfo.comfortLevel}`);
   } catch (error) {
     console.error('Error updating model compatibility display:', error);
   }
@@ -759,6 +743,9 @@ async function loadSessions() {
     sessions.forEach(session => {
       addSessionToSidebar(session);
     });
+    
+    // Ensure session handler is set up
+    setupSessionListeners();
   } catch (error) {
     console.error('Load sessions error:', error);
     sessionsList.innerHTML = '<div class="error-message">Failed to load sessions</div>';
@@ -769,6 +756,10 @@ function addSessionToSidebar(session) {
   const sessionItem = document.createElement('div');
   sessionItem.className = 'session-item';
   sessionItem.dataset.id = session.id;
+  
+  // Store if session has content for easier empty session detection
+  sessionItem.dataset.hasContent = (!!(session.title) || 
+                                  !!(session.messages && session.messages.length > 0)).toString();
   
   const date = session.savedAt ? new Date(session.savedAt) : new Date();
   const formattedDate = formatDate(date);
@@ -785,13 +776,7 @@ function addSessionToSidebar(session) {
     </div>
   `;
   
-  // Add event listeners
-  sessionItem.addEventListener('click', (e) => {
-    if (!e.target.closest('.delete-session-btn')) {
-      loadSession(session.id);
-    }
-  });
-  
+    // Style the delete button consistently
   const deleteBtn = sessionItem.querySelector('.delete-session-btn');
   if (deleteBtn) {
     // Add a more visible style to the delete button to ensure it's clickable
@@ -800,30 +785,11 @@ function addSessionToSidebar(session) {
     deleteBtn.style.backgroundColor = '#f8e5e5';
     deleteBtn.style.borderRadius = '4px';
     deleteBtn.style.zIndex = '100';
-    
-    // Add both click and mousedown events to ensure it registers
-    const handleDeleteClick = (e) => {
-      console.log('Delete button clicked for session:', session.id);
-      e.stopPropagation();
-      e.preventDefault();
-      
-      // Directly delete problematic empty sessions
-      if (!session.title && !session.patientName && (!session.messages || session.messages.length === 0)) {
-        console.log('Detected empty session, deleting directly without confirmation');
-        deleteSession(session.id);
-      } else {
-        // Regular confirmation for non-empty sessions
-        showDeleteConfirmation(session.id, session.title || session.patientName || 'this session');
-      }
-      
-      return false;
-    };
-    
-    deleteBtn.addEventListener('click', handleDeleteClick);
-    deleteBtn.addEventListener('mousedown', handleDeleteClick);
   } else {
     console.error('Delete button not found in session item');
   }
+  
+  // No event listeners attached here - using delegation instead
   
   sessionsList.appendChild(sessionItem);
 }
@@ -1830,24 +1796,49 @@ function hideInfoModal() {
   infoModal.classList.add('hidden');
 }
 
+// Event delegation for session list clicks
+function setupSessionListeners() {
+  sessionsList.addEventListener('click', handleSessionClick);
+}
+
+function handleSessionClick(event) {
+  const deleteBtn = event.target.closest('.delete-session-btn');
+  const sessionItem = event.target.closest('.session-item');
+  
+  if (!sessionItem) return;
+  
+  const sessionId = sessionItem.dataset.id;
+  
+  if (deleteBtn) {
+    // Prevent event from bubbling to session item
+    event.stopPropagation();
+    event.preventDefault();
+    
+    // Empty sessions get deleted directly, others get confirmation
+    const isEmpty = !sessionItem.querySelector('.session-title').textContent || 
+                    sessionItem.querySelector('.session-title').textContent === 'Untitled Session' ||
+                    sessionItem.dataset.hasContent === 'false';
+    
+    if (isEmpty) {
+      deleteSession(sessionId);
+    } else {
+      const sessionName = sessionItem.querySelector('.session-title').textContent;
+      showDeleteConfirmation(sessionId, sessionName);
+    }
+    
+    return false;
+  } else {
+    // Load the session (not clicking delete button)
+    loadSession(sessionId);
+  }
+}
+
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('DOM fully loaded');
   initializeApp();
   
-  // Add debug button listener
-  setTimeout(() => {
-    const debugBtn = document.getElementById('debug-new-session');
-    if (debugBtn) {
-      console.log('Debug button found, attaching listener');
-      debugBtn.addEventListener('click', (e) => {
-        console.log('Debug new session button clicked');
-        startNewSession();
-      });
-    } else {
-      console.error('Debug button not found in DOM');
-    }
-  }, 1000); // Delay to ensure DOM is fully loaded
+  // Set up session delegation
+  setupSessionListeners();
 });
 
 toggleSidebarBtn.addEventListener('click', toggleSidebar);
@@ -1880,36 +1871,7 @@ userInput.addEventListener('keydown', (e) => {
 });
 
 loadFileBtn.addEventListener('click', loadNotesFromFile);
-// Replace the existing event listener with a direct function reference 
-// for simpler debugging and potentially avoiding any event propagation issues
-if (newSessionBtn) {
-  console.log('Adding event listener to newSessionBtn directly');
-  
-  // Remove any existing event listeners by cloning the node
-  const newBtn = newSessionBtn.cloneNode(true);
-  newSessionBtn.parentNode.replaceChild(newBtn, newSessionBtn);
-  
-  // Get the new DOM element reference
-  const newSessionBtnRef = document.getElementById('new-session-btn');
-  
-  // Add the new event listener to the new reference
-  newSessionBtnRef.onclick = function(event) {
-    event.preventDefault();
-    event.stopPropagation();
-    console.log('New Session button clicked (direct onclick handler)');
-    
-    try {
-      startNewSession();
-    } catch (error) {
-      console.error('Error in startNewSession:', error);
-      alert('Error creating new session: ' + error.message);
-    }
-    
-    return false; // Prevent default and stop propagation
-  };
-} else {
-  console.error('newSessionBtn is null or undefined - cannot attach click handler');
-}
+// Event listener for the New Session button is set in initializeApp
 
 // Modal event listeners
 closeModalBtn.addEventListener('click', hideModal);
