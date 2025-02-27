@@ -350,107 +350,73 @@ Provide 2-4 clarification questions that would help improve this report:
   }
   
   evaluateModelCompatibility(modelName, systemInfo) {
-    // Get model size in billions of parameters
+    // get model size
     const modelSizeInB = this.estimateModelParameters(modelName);
     
-    // Get hardware info
+    // hardware specs
     const ram = systemInfo.memory.total;
     const isAppleSilicon = systemInfo.cpu.isAppleSilicon;
+    const architecture = isAppleSilicon ? 'appleSilicon' : 'other';
     
-    // Simple compatibility matrix
-    // Format: [min_size, max_size]
-    const compatMatrix = {
-      // Apple Silicon machines
-      appleSilicon: {
-        // RAM ranges (in GB)
-        8: {
-          easy: [0, 7],          // 0-7B models run easily on 8GB RAM
-          difficult: [7, 13],    // 7-13B models run with difficulty on 8GB RAM
-          // anything larger is impossible
-        },
-        16: {
-          easy: [0, 13],         // 0-13B models run easily on 16GB RAM
-          difficult: [13, 33],   // 13-33B models run with difficulty on 16GB RAM
-          // anything larger is impossible
-        },
-        32: {
-          easy: [0, 33],         // 0-33B models run easily on 32GB RAM
-          difficult: [33, 70],   // 33-70B models run with difficulty on 32GB RAM
-          // anything larger is impossible
-        },
-        64: {
-          easy: [0, 70],         // 0-70B models run easily on 64GB RAM
-          difficult: [70, 100],  // 70-100B models run with difficulty on 64GB RAM
-          // anything larger is impossible
-        }
+    // define compatibility matrix as flat lookup table
+    // format: [architecture, minRam, maxRam, minSize, maxSize, comfortLevel]
+    const compatibilityRules = [
+      // Apple Silicon compatibility
+      ['appleSilicon', 0, 8, 0, 7, 'Easy'],
+      ['appleSilicon', 0, 8, 7, 13, 'Difficult'],
+      ['appleSilicon', 8, 16, 0, 13, 'Easy'],
+      ['appleSilicon', 8, 16, 13, 33, 'Difficult'],
+      ['appleSilicon', 16, 32, 0, 33, 'Easy'],
+      ['appleSilicon', 16, 32, 33, 70, 'Difficult'],
+      ['appleSilicon', 32, Infinity, 0, 70, 'Easy'],
+      ['appleSilicon', 32, Infinity, 70, 100, 'Difficult'],
+      
+      // Other architectures
+      ['other', 0, 8, 0, 3, 'Easy'],
+      ['other', 0, 8, 3, 7, 'Difficult'],
+      ['other', 8, 16, 0, 7, 'Easy'],
+      ['other', 8, 16, 7, 13, 'Difficult'],
+      ['other', 16, 32, 0, 13, 'Easy'],
+      ['other', 16, 32, 13, 33, 'Difficult'],
+      ['other', 32, Infinity, 0, 33, 'Easy'],
+      ['other', 32, Infinity, 33, 70, 'Difficult']
+    ];
+    
+    // find matching rule
+    const matchingRule = compatibilityRules.find(rule => {
+      const [arch, minRam, maxRam, minSize, maxSize] = rule;
+      return arch === architecture && 
+             ram >= minRam && ram < maxRam && 
+             modelSizeInB >= minSize && modelSizeInB <= maxSize;
+    }) || [architecture, 0, 0, 0, 0, 'Impossible'];
+    
+    // extract comfort level
+    const comfortLevel = matchingRule[5];
+    
+    // message templates based on comfort level
+    const messages = {
+      'Easy': {
+        message: 'should run well',
+        loadingMessage: null
       },
-      // Other processors (Intel, AMD, etc.)
-      other: {
-        // RAM ranges (in GB)
-        8: {
-          easy: [0, 3],          // 0-3B models run easily on 8GB RAM
-          difficult: [3, 7],     // 3-7B models run with difficulty on 8GB RAM
-          // anything larger is impossible
-        },
-        16: {
-          easy: [0, 7],          // 0-7B models run easily on 16GB RAM
-          difficult: [7, 13],    // 7-13B models run with difficulty on 16GB RAM
-          // anything larger is impossible
-        },
-        32: {
-          easy: [0, 13],         // 0-13B models run easily on 32GB RAM
-          difficult: [13, 33],   // 13-33B models run with difficulty on 32GB RAM
-          // anything larger is impossible
-        },
-        64: {
-          easy: [0, 33],         // 0-33B models run easily on 64GB RAM
-          difficult: [33, 70],   // 33-70B models run with difficulty on 64GB RAM
-          // anything larger is impossible
-        }
+      'Difficult': {
+        message: 'should run slowly',
+        loadingMessage: 'This could take a few minutes.<br>Plenty of time for tea.'
+      },
+      'Impossible': {
+        message: 'not enough RAM',
+        loadingMessage: 'This probably will not run.<br>Suggest closing this program.'
       }
     };
     
-    // Determine architecture type
-    const archType = isAppleSilicon ? 'appleSilicon' : 'other';
-    
-    // Find the right RAM category
-    let ramCategory;
-    if (ram <= 8) ramCategory = 8;
-    else if (ram <= 16) ramCategory = 16;
-    else if (ram <= 32) ramCategory = 32;
-    else ramCategory = 64;
-    
-    // Default values
-    let comfortLevel = 'Easy';
-    let message = 'Will run well'; 
-    let loadingMessage = null;
-    
-    // Determine comfort level based on matrix
-    const ranges = compatMatrix[archType][ramCategory];
-    
-    if (modelSizeInB >= ranges.easy[0] && modelSizeInB <= ranges.easy[1]) {
-      comfortLevel = 'Easy';
-      message = 'Will run well';
-      loadingMessage = 'You may not have time for tea.';
-    } else if (modelSizeInB >= ranges.difficult[0] && modelSizeInB <= ranges.difficult[1]) {
-      comfortLevel = 'Difficult';
-      message = "Will run slowly";
-      loadingMessage = 'This could take a few minutes.<br>Plenty of time for tea.';
-    } else {
-      comfortLevel = 'Impossible';
-      message = 'Not enough RAM';
-      loadingMessage = 'This probably will not run.<br>Suggest closing this program.';
-    }
-    
-    // Debug output to help troubleshoot
-    console.log(`Model compatibility for ${modelName}: Size=${modelSizeInB}B, RAM=${ram}GB, Arch=${archType}, Level=${comfortLevel}`);
-    console.log(`Ranges - Easy: ${ranges.easy[0]}-${ranges.easy[1]}B, Difficult: ${ranges.difficult[0]}-${ranges.difficult[1]}B`);
+    // log for debugging
+    console.log(`Model ${modelName} (${modelSizeInB}B) on ${architecture} with ${ram}GB RAM: ${comfortLevel}`);
     
     return {
       modelSizeInB,
       comfortLevel,
-      message,
-      loadingMessage
+      message: messages[comfortLevel].message,
+      loadingMessage: messages[comfortLevel].loadingMessage
     };
   }
 
