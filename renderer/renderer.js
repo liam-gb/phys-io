@@ -265,9 +265,7 @@ function updateModelStatusDisplay(compatInfo) {
 // Update compatibility info display
 async function updateModelCompatibilityDisplay(modelName) {
   try {
-    // Get compatibility info from cache or evaluate if needed
-    const compatInfo = await evaluateModelCompatibility(modelName);
-    updateModelStatusDisplay(compatInfo);
+    updateModelStatusDisplay(await evaluateModelCompatibility(modelName));
   } catch (error) {
     console.error('Error updating model compatibility display:', error);
   }
@@ -1089,17 +1087,11 @@ async function deleteSession(sessionId) {
 }
 
 function showDeleteConfirmation(sessionId, sessionName) {
-  modalTitle.textContent = 'Delete Session';
-  modalMessage.textContent = `Are you sure you want to delete "${sessionName}"? This action cannot be undone.`;
-  
-  // Set up confirm action
-  confirmModalBtn.onclick = () => {
-    deleteSession(sessionId);
-    confirmModal.classList.add('hidden');
-  };
-  
-  // Show modal
-  confirmModal.classList.remove('hidden');
+  showModal(
+    'Delete Session', 
+    `Are you sure you want to delete "${sessionName}"? This action cannot be undone.`, 
+    () => deleteSession(sessionId)
+  );
 }
 
 // UI helper functions
@@ -1393,15 +1385,10 @@ class LoadingManager {
 // Create a single instance
 const loadingManager = new LoadingManager();
 
-function addLoadingMessage(stage = 'letter') {
-  return loadingManager.addLoader(stage);
-}
-
-function removeLoadingMessage(id) {
-  loadingManager.removeLoader(id);
-}
-
-function addErrorMessage(errorText) {
+// Simplified message handling functions
+const addLoadingMessage = (stage = 'letter') => loadingManager.addLoader(stage);
+const removeLoadingMessage = (id) => loadingManager.removeLoader(id);
+const addErrorMessage = (errorText) => {
   const errorDiv = document.createElement('div');
   errorDiv.className = 'error-message';
   errorDiv.textContent = errorText;
@@ -1507,63 +1494,8 @@ function removeThinking(text) {
 }
 
 function formatReport(reportText) {
-  // Split by lines and process
-  const lines = reportText.split('\n');
-  let formattedHtml = '';
-  let inList = false;
-  
-  for (const line of lines) {
-    // Handle headers
-    if (line.startsWith('# ')) {
-      formattedHtml += `<h2>${line.substring(2)}</h2>`;
-    } else if (line.startsWith('## ')) {
-      formattedHtml += `<h3>${line.substring(3)}</h3>`;
-    } else if (line.startsWith('### ')) {
-      formattedHtml += `<h4>${line.substring(4)}</h4>`;
-    }
-    // Handle list items
-    else if (line.match(/^\d+\.\s/)) {
-      if (!inList || inList !== 'ol') {
-        if (inList) formattedHtml += inList === 'ul' ? '</ul>' : '';
-        formattedHtml += '<ol>';
-        inList = 'ol';
-      }
-      formattedHtml += `<li>${line.replace(/^\d+\.\s/, '')}</li>`;
-    } else if (line.startsWith('- ')) {
-      if (!inList || inList !== 'ul') {
-        if (inList) formattedHtml += inList === 'ol' ? '</ol>' : '';
-        formattedHtml += '<ul>';
-        inList = 'ul';
-      }
-      formattedHtml += `<li>${line.substring(2)}</li>`;
-    }
-    // Close list if needed
-    else if (inList && line.trim() === '') {
-      formattedHtml += inList === 'ol' ? '</ol>' : '</ul>';
-      inList = false;
-      formattedHtml += '<p></p>';
-    }
-    // Regular paragraph
-    else {
-      if (inList && line.trim() !== '') {
-        formattedHtml += inList === 'ol' ? '</ol>' : '</ul>';
-        inList = false;
-      }
-      
-      if (line.trim() !== '') {
-        formattedHtml += `<p>${line}</p>`;
-      } else if (formattedHtml && !formattedHtml.endsWith('<p></p>')) {
-        formattedHtml += '<p></p>';
-      }
-    }
-  }
-  
-  // Close any remaining lists
-  if (inList) {
-    formattedHtml += inList === 'ol' ? '</ol>' : '</ul>';
-  }
-  
-  return formattedHtml;
+  // Use marked to parse markdown
+  return marked.parse(reportText);
 }
 
 // Copy report to clipboard
@@ -1649,14 +1581,61 @@ function showToast(message, isError = false) {
 }
 
 // Sidebar toggle
-function toggleSidebar() {
-  sidebar.classList.toggle('open');
+const toggleSidebar = () => sidebar.classList.toggle('open');
+
+// Create a reusable modal component
+class ModalManager {
+  constructor() {
+    this.activeModals = new Map();
+  }
+  
+  showModal(modalElement, options = {}) {
+    modalElement.classList.remove('hidden');
+    
+    if (options.onConfirm) {
+      const confirmBtn = modalElement.querySelector('[data-action="confirm"]');
+      if (confirmBtn) {
+        // Store original listener if exists
+        const originalListener = confirmBtn.onclick;
+        this.activeModals.set(modalElement.id, { element: modalElement, originalListener });
+        
+        // Set new listener
+        confirmBtn.onclick = () => {
+          options.onConfirm();
+          this.hideModal(modalElement);
+        };
+      }
+    }
+    
+    return modalElement;
+  }
+  
+  hideModal(modalElement) {
+    modalElement.classList.add('hidden');
+    
+    // Restore original listeners if any
+    const modalData = this.activeModals.get(modalElement.id);
+    if (modalData && modalData.originalListener) {
+      const confirmBtn = modalElement.querySelector('[data-action="confirm"]');
+      if (confirmBtn) {
+        confirmBtn.onclick = modalData.originalListener;
+      }
+    }
+    
+    this.activeModals.delete(modalElement.id);
+  }
 }
 
-// Modal functions
-function hideModal() {
-  confirmModal.classList.add('hidden');
-}
+// Create single instance
+const modalManager = new ModalManager();
+
+// Simplified modal functions
+const hideModal = () => modalManager.hideModal(confirmModal);
+const showModal = (title, message, onConfirm) => {
+  modalTitle.textContent = title;
+  modalMessage.textContent = message;
+  return modalManager.showModal(confirmModal, { onConfirm });
+};
 
 // Info Modal
 const infoBtn = document.getElementById('info-btn');
@@ -1701,28 +1680,27 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function showInfoModal(tabName = 'intro') {
-  infoModal.classList.remove('hidden');
-  
   // Set active tab
   introTab.classList.remove('active');
   disclaimerTab.classList.remove('active');
   
-  if (tabName === 'intro') {
-    introTab.classList.add('active');
-    loadDocContent('intro.txt').then(content => {
-      infoContent.textContent = content;
-    });
-  } else if (tabName === 'disclaimer') {
-    disclaimerTab.classList.add('active');
-    loadDocContent('disclaimer.txt').then(content => {
+  // Set active tab and load content
+  const tabConfig = {
+    'intro': { element: introTab, file: 'intro.txt' },
+    'disclaimer': { element: disclaimerTab, file: 'disclaimer.txt' }
+  };
+  
+  if (tabConfig[tabName]) {
+    tabConfig[tabName].element.classList.add('active');
+    loadDocContent(tabConfig[tabName].file).then(content => {
       infoContent.textContent = content;
     });
   }
+  
+  modalManager.showModal(infoModal);
 }
 
-function hideInfoModal() {
-  infoModal.classList.add('hidden');
-}
+const hideInfoModal = () => modalManager.hideModal(infoModal);
 
 // Event delegation for session list clicks
 function setupSessionListeners() {
