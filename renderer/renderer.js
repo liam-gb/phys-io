@@ -83,6 +83,26 @@ async function initializeApp() {
   newSessionBtn.addEventListener('click', () => startNewSession());
 }
 
+// Centralized error handler for renderer process
+const errorHandler = {
+  // Log to console only
+  log: (message, error) => {
+    console.error(`Error: ${message}`, error);
+  },
+  
+  // Show error in toast notification
+  toast: (message, error) => {
+    console.error(`Error: ${message}`, error);
+    showToast(message, true);
+  },
+  
+  // Display error in conversation history
+  display: (message, error) => {
+    console.error(`Error: ${message}`, error);
+    addErrorMessage(message);
+  }
+};
+
 // Check Ollama connection
 async function checkOllamaConnection() {
   try {
@@ -99,6 +119,7 @@ async function checkOllamaConnection() {
       setDisconnectedState();
     }
   } catch (error) {
+    errorHandler.log('Connection check failed', error);
     setDisconnectedState();
   }
 }
@@ -145,7 +166,7 @@ async function evaluateModelCompatibility(modelName, forceRefresh = false) {
     console.log(`Evaluated compatibility for ${modelName}:`, compatibility);
     return compatibility;
   } catch (error) {
-    console.error(`Failed to evaluate compatibility for ${modelName}:`, error);
+    errorHandler.log(`Failed to evaluate compatibility for ${modelName}`, error);
     return {
       modelSizeInB: null,
       comfortLevel: 'Unknown',
@@ -244,7 +265,7 @@ async function loadModels() {
     // Update compatibility info display for selected model
     updateModelCompatibilityDisplay(currentSession.model);
   } catch (error) {
-    console.error('Failed to load models:', error);
+    errorHandler.log('Failed to load models', error);
     
     // Set a default option
     modelSelect.innerHTML = '';
@@ -352,12 +373,12 @@ async function generateInitialReport(notes) {
       // Update current report index
       currentSession.currentReportIndex = currentSession.messages.length - 1;
     } else {
-      addErrorMessage("Failed to generate letter. Please check if Ollama is running.");
+      errorHandler.display("Failed to generate letter. Please check if Ollama is running.", new Error("Empty response"));
     }
   } catch (error) {
     // Remove loading message
     removeLoadingMessage(loadingId);
-    addErrorMessage(`Error: ${error.message}`);
+    errorHandler.display("Failed to generate letter", error);
   }
 }
 
@@ -418,7 +439,7 @@ async function generateClarificationQuestions(notes, reportText) {
     }
   } catch (error) {
     removeLoadingMessage(loadingId);
-    console.error('Error generating clarification questions:', error);
+    errorHandler.log('Error generating clarification questions', error);
   }
 }
 
@@ -565,12 +586,12 @@ async function submitClarificationAnswers(answers) {
       // Schedule autosave
       scheduleAutosave();
     } else {
-      addErrorMessage("Failed to generate updated letter.");
+      errorHandler.display("Failed to generate updated letter", new Error("Empty response"));
     }
   } catch (error) {
     // Remove loading message
     removeLoadingMessage(loadingId);
-    addErrorMessage(`Error: ${error.message}`);
+    errorHandler.display("Failed to generate updated letter", error);
   }
 }
 
@@ -609,12 +630,12 @@ async function generateResponse() {
       // Update current report index
       currentSession.currentReportIndex = currentSession.messages.length - 1;
     } else {
-      addErrorMessage("Failed to generate response.");
+      errorHandler.display("Failed to generate response", new Error("Empty response"));
     }
   } catch (error) {
     // Remove loading message
     removeLoadingMessage(loadingId);
-    addErrorMessage(`Error: ${error.message}`);
+    errorHandler.display("Failed to generate response", error);
   }
 }
 
@@ -917,8 +938,7 @@ async function loadSession(sessionId) {
       showToast('Session loaded');
     }
   } catch (error) {
-    console.error('Load session error:', error);
-    showToast('Failed to load session', true);
+    errorHandler.toast('Failed to load session', error);
   }
 }
 
@@ -963,8 +983,6 @@ function startNewSession() {
 }
 
 async function saveSession() {
-  console.log('saveSession called with session data:', JSON.stringify(currentSession, null, 2));
-  
   try {
     const timestamp = new Date().toISOString();
     const sessionData = {
@@ -972,18 +990,14 @@ async function saveSession() {
       savedAt: timestamp
     };
     
-    console.log('Sending session data to window.api.sessions.save');
     const result = await window.api.sessions.save(sessionData);
-    console.log('Save result:', result);
     
     if (result.success) {
-      console.log('Session saved successfully with ID:', result.id);
       currentSession.id = result.id || currentSession.id;
       currentSession.lastSaved = timestamp;
       
       // If this is first save, add to sidebar
       if (!document.querySelector(`.session-item[data-id="${currentSession.id}"]`)) {
-        console.log('Adding new session to sidebar');
         const sessionInfo = {
           id: currentSession.id,
           title: currentSession.title,
@@ -992,12 +1006,10 @@ async function saveSession() {
         };
         addSessionToSidebar(sessionInfo);
       } else {
-        console.log('Updating existing session in sidebar');
         updateSessionInSidebar();
       }
       
       // Mark as active
-      console.log('Marking session as active in sidebar');
       document.querySelectorAll('.session-item').forEach(item => {
         item.classList.remove('active');
       });
@@ -1006,11 +1018,10 @@ async function saveSession() {
         activeItem.classList.add('active');
       }
     } else {
-      console.error('Session save failed:', result);
+      errorHandler.toast('Failed to save session', new Error(result.error || 'Unknown error'));
     }
   } catch (error) {
-    console.error('Save session error:', error);
-    console.error('Error stack:', error.stack);
+    errorHandler.toast('Error saving session', error);
   }
 }
 
@@ -1027,33 +1038,25 @@ function scheduleAutosave() {
 }
 
 async function deleteSession(sessionId) {
-  console.log('Attempting to delete session with ID:', sessionId);
-  
   try {
     // First find and remove the element from the DOM to ensure UI is responsive
     const sessionElement = document.querySelector(`.session-item[data-id="${sessionId}"]`);
-    console.log('Found session element in DOM:', sessionElement);
     
     if (sessionElement) {
       // Remove the element immediately for better UX
       sessionElement.remove();
-      console.log('Removed session element from DOM');
     }
     
     // Then attempt to delete from the data store
-    console.log('Deleting session from data store...');
     const result = await window.api.sessions.delete(sessionId);
-    console.log('Delete session result:', result);
     
     // Handle the case where the current session was deleted
     if (currentSession.id === sessionId) {
-      console.log('Current session was deleted, starting new session');
       startNewSession();
     }
     
     // Check if there are any sessions left and update UI accordingly
     if (sessionsList.children.length === 0) {
-      console.log('No sessions left, showing empty state');
       sessionsList.innerHTML = '<div class="empty-state">No saved sessions</div>';
     }
     
@@ -1061,26 +1064,20 @@ async function deleteSession(sessionId) {
     
     // Force a clean refresh of the sessions list after a short delay
     setTimeout(() => {
-      console.log('Refreshing sessions list');
       loadSessions();
     }, 500);
     
   } catch (error) {
-    console.error('Delete session error:', error);
-    console.error('Error stack:', error.stack);
+    errorHandler.toast('Failed to delete session', error);
     
     // Even if the backend delete fails, make sure the UI is consistent
     const sessionElement = document.querySelector(`.session-item[data-id="${sessionId}"]`);
     if (sessionElement) {
       sessionElement.remove();
-      console.log('Force-removed problematic session element from DOM');
     }
-    
-    showToast('Failed to delete session - trying to clean up UI', true);
     
     // Force a refresh of the sessions list
     setTimeout(() => {
-      console.log('Forcing sessions list refresh after error');
       loadSessions();
     }, 500);
   }
@@ -1326,13 +1323,11 @@ class LoadingManager {
     switch (stage) {
       case 'letter':
       case 'report':
+      case 'response':
         message = `${verb} the letter for you...`;
         break;
       case 'clarification':
         message = `${verb} my questions for you...`;
-        break;
-      case 'response':
-        message = `${verb} response...`;
         break;
       default:
         message = `${verb}...`;
@@ -1395,6 +1390,9 @@ const addErrorMessage = (errorText) => {
   
   conversationHistory.appendChild(errorDiv);
   scrollToBottom();
+  
+  // Also show a toast notification for errors
+  showToast(errorText, true);
   
   return errorDiv;
 }
