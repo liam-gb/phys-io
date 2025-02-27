@@ -730,6 +730,12 @@ IMPORTANT: Respond ONLY with the final report text. Do not include any explanati
 
 // Session management functions
 async function loadSessions() {
+
+  if (autosaveTimer) {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+  }
+  
   try {
     const sessions = await window.api.sessions.loadList();
     
@@ -1295,6 +1301,10 @@ class LoadingManager {
     if (intervalId) {
       clearInterval(intervalId);
       this.activeLoaders.delete(id);
+    } else {
+      // failsafe - clear any orphaned intervals
+      this.activeLoaders.forEach((interval) => clearInterval(interval));
+      this.activeLoaders.clear();
     }
     
     if (element) {
@@ -1717,6 +1727,7 @@ const hideInfoModal = () => modalManager.hideModal(infoModal);
 
 // Event delegation for session list clicks
 function setupSessionListeners() {
+  sessionsList.removeEventListener('click', handleSessionClick);
   sessionsList.addEventListener('click', handleSessionClick);
 }
 
