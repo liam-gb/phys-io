@@ -1,11 +1,25 @@
+// Central error handler for uncaught exceptions
 process.on('uncaughtException', (err) => {
   console.error('UNCAUGHT EXCEPTION:', err);
 });
+
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const ollamaClient = require('./src/ollama');
+
+// Centralized error handler
+const errorHandler = {
+  log: (message, error) => {
+    console.error(`Error: ${message}`, error);
+  },
+  showError: (message, error) => {
+    console.error(`Error: ${message}`, error);
+    dialog.showErrorBox('Error', `${message}: ${error.message}`);
+    return null;
+  }
+};
 
 let mainWindow;
 const sessionsDirectory = path.join(app.getPath('userData'), 'sessions');
@@ -50,7 +64,7 @@ class SessionManager {
       
       return { success: true, id: sessionData.id };
     } catch (error) {
-      console.error('Failed to save session:', error);
+      errorHandler.log('Failed to save session', error);
       return { success: false, error: error.message };
     }
   }
@@ -71,7 +85,7 @@ class SessionManager {
       
       return sessionData;
     } catch (error) {
-      console.error(`Failed to load session ${sessionId}:`, error);
+      errorHandler.log(`Failed to load session ${sessionId}`, error);
       return null;
     }
   }
@@ -86,7 +100,7 @@ class SessionManager {
       }
       return false;
     } catch (error) {
-      console.error(`Failed to delete session ${sessionId}:`, error);
+      errorHandler.log(`Failed to delete session ${sessionId}`, error);
       return false;
     }
   }
@@ -109,7 +123,7 @@ class SessionManager {
               messageCount: sessionData.messages?.length || 0
             };
           } catch (err) {
-            console.error(`Error reading session file ${file}:`, err);
+            errorHandler.log(`Error reading session file ${file}`, err);
             return null;
           }
         })
@@ -118,7 +132,7 @@ class SessionManager {
       
       return sessions;
     } catch (error) {
-      console.error('Failed to load sessions list:', error);
+      errorHandler.log('Failed to load sessions list', error);
       return [];
     }
   }
@@ -141,7 +155,7 @@ class SessionManager {
       
       return problematicSessions.length;
     } catch (error) {
-      console.error('Error during cleanup:', error);
+      errorHandler.log('Error during cleanup', error);
       return 0;
     }
   }
@@ -190,16 +204,16 @@ app.on('activate', () => {
 
 // Error handler factory
 function createIpcHandler(handlerFn, errorOptions = {}) {
-  const { errorMessage, consoleOnly = false, fallbackValue = null } = errorOptions;
+  const { errorMessage = 'Error in IPC handler', consoleOnly = false, fallbackValue = null } = errorOptions;
   
   return async (event, ...args) => {
     try {
       return await handlerFn(event, ...args);
     } catch (error) {
-      console.error(`${errorMessage || 'Error in IPC handler'}:`, error);
-      
-      if (!consoleOnly) {
-        dialog.showErrorBox('Error', `${errorMessage || 'An error occurred'}: ${error.message}`);
+      if (consoleOnly) {
+        errorHandler.log(errorMessage, error);
+      } else {
+        errorHandler.showError(errorMessage, error);
       }
       
       return fallbackValue;
@@ -291,7 +305,7 @@ function loadContentFile(basePath, filename) {
     }
     return null;
   } catch (error) {
-    console.error(`Error loading file ${filename} from ${basePath}:`, error);
+    errorHandler.log(`Error loading file ${filename} from ${basePath}`, error);
     return null;
   }
 }

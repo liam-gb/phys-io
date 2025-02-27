@@ -7,6 +7,13 @@ const app = require('electron').app || require('@electron/remote').app;
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'settings.json');
 
+// Centralized error handler for ollama client
+const errorHandler = {
+  log: (message, error) => {
+    console.error(`Error: ${message}`, error);
+  }
+};
+
 // Simple store API 
 const store = {
   get: (key, defaultValue) => {
@@ -17,7 +24,7 @@ const store = {
       const data = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
       return data[key] !== undefined ? data[key] : defaultValue;
     } catch (error) {
-      console.error('Error reading settings:', error);
+      errorHandler.log('Error reading settings', error);
       return defaultValue;
     }
   },
@@ -29,7 +36,7 @@ const store = {
       data[key] = value;
       fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2), 'utf8');
     } catch (error) {
-      console.error('Error writing settings:', error);
+      errorHandler.log('Error writing settings', error);
     }
   }
 };
@@ -61,7 +68,7 @@ class PromptManager {
       
       throw new Error(`Prompt file not found: ${promptName}`);
     } catch (error) {
-      console.error(`Error reading prompt file ${promptName}:`, error);
+      errorHandler.log(`Error reading prompt file ${promptName}`, error);
       throw error;
     }
   }
@@ -118,18 +125,15 @@ class OllamaClient {
         response.on('end', () => {
           try {
             if (!responseData.trim()) {
-              console.error('Empty response from Ollama');
               return reject(new Error('Empty response from Ollama'));
             }
             
             if (!responseData.trim().startsWith('{')) {
-              console.error('Non-JSON response:', responseData.substring(0, 100));
               return reject(new Error('Invalid response format from Ollama'));
             }
             
             resolve(JSON.parse(responseData));
           } catch (e) {
-            console.error('Parse error:', e, 'Data:', responseData.substring(0, 100));
             reject(new Error(`Failed to parse Ollama response: ${e.message}`));
           }
         });
@@ -167,7 +171,7 @@ class OllamaClient {
       const prompt = this.promptManager.getPrompt(this.promptFile, { notes });
       return await this.makeOllamaRequest(prompt);
     } catch (error) {
-      console.error('Error generating report:', error);
+      errorHandler.log('Error generating report', error);
       throw error;
     }
   }
@@ -191,7 +195,7 @@ Provide 2-4 clarification questions that would help improve this report:
 
       return await this.makeOllamaRequest(prompt);
     } catch (error) {
-      console.error('Error generating clarification questions:', error);
+      errorHandler.log('Error generating clarification questions', error);
       throw error;
     }
   }
@@ -211,7 +215,7 @@ Provide 2-4 clarification questions that would help improve this report:
 
       return await this.makeOllamaRequest(prompt);
     } catch (error) {
-      console.error('Error generating report with clarifications:', error);
+      errorHandler.log('Error generating report with clarifications', error);
       throw error;
     }
   }
@@ -220,7 +224,7 @@ Provide 2-4 clarification questions that would help improve this report:
     try {
       return await this.makeOllamaRequest(contextPrompt);
     } catch (error) {
-      console.error('Error generating conversational response:', error);
+      errorHandler.log('Error generating conversational response', error);
       throw error;
     }
   }
@@ -243,12 +247,12 @@ Provide 2-4 clarification questions that would help improve this report:
           })
           .catch(error => {
             clearTimeout(timeout);
-            console.error('Ollama connection error:', error.message);
+            errorHandler.log('Ollama connection error', error);
             resolve(false); // fail gracefully
           });
       });
     } catch (error) {
-      console.error('Unexpected error in checkConnection:', error);
+      errorHandler.log('Unexpected error in checkConnection', error);
       return false;
     }
   }
@@ -275,7 +279,7 @@ Provide 2-4 clarification questions that would help improve this report:
         arch: os.arch()
       };
     } catch (error) {
-      console.error('Error getting system info:', error);
+      errorHandler.log('Error getting system info', error);
       return null;
     }
   }
@@ -449,7 +453,7 @@ Provide 2-4 clarification questions that would help improve this report:
       const models = data.models || [];
       return models.map(model => model.name);
     } catch (error) {
-      console.error('Error getting models:', error);
+      errorHandler.log('Error getting models', error);
       throw error;
     }
   }
