@@ -334,53 +334,56 @@ Provide 2-4 clarification questions that would help improve this report:
   }
   
   estimateModelParameters(modelName) {
-    
     let modelSizeInB = null;
     const lowerModelName = modelName.toLowerCase();
     const modelSizes = this.modelSizeDefinitions;
     
+    console.log(`Estimating size for model: ${modelName}`);
+    
     // Special case handling for llama3.2 70b
     if ((lowerModelName.includes('llama3.2') || lowerModelName.includes('llama3:2')) && 
         lowerModelName.includes('70b')) {
+      console.log('Matched special case: llama3.2 70b -> 70B');
       return 70;
     }
     
     // Check special cases first
     for (const [specialCase, size] of Object.entries(modelSizes.specialCases)) {
       if (lowerModelName.includes(specialCase.toLowerCase())) {
+        console.log(`Matched special case: ${specialCase} -> ${size}B`);
         return size;
       }
     }
     
-    // Try to extract explicit parameter count
-    const sizeMatch = lowerModelName.match(/[:-](\d+(?:\.\d+)?)b/i);
+    // Try to extract explicit parameter count - IMPROVE THE REGEX
+    // Original: const sizeMatch = lowerModelName.match(/[:-](\d+(?:\.\d+)?)b/i);
+    // New more robust regex that handles different separators and formats
+    const sizeMatch = lowerModelName.match(/[:_\-\/.\s](\d+(?:\.\d+)?)[b]?$/i) || 
+                      lowerModelName.match(/(\d+(?:\.\d+)?)b/i);
+    
     if (sizeMatch && sizeMatch[1]) {
       modelSizeInB = parseFloat(sizeMatch[1]);
+      console.log(`Extracted parameter count via regex: ${modelSizeInB}B`);
       return modelSizeInB;
     }
     
     // Check specific models
     for (const [model, size] of Object.entries(modelSizes.specificModels)) {
       if (lowerModelName.includes(model.toLowerCase())) {
+        console.log(`Matched specific model: ${model} -> ${size}B`);
         return size;
       }
     }
     
-    // Handle specific deepseek variants that don't follow standard pattern
-    if (lowerModelName.includes('deepseek') && lowerModelName.includes('1.5')) {
-      return 1.5;
+    // Add specific check for deepseek-r1 variants
+    if (lowerModelName.includes('deepseek-r1') || 
+        lowerModelName.includes('deepseek:r1')) {
+      console.log('Matched deepseek-r1 variant -> 8B');
+      return 8;
     }
     
-    // Check model families
-    for (const [family, size] of Object.entries(modelSizes.modelFamilies)) {
-      if (lowerModelName.includes(family.toLowerCase())) {
-        return size;
-      }
-    }
-    
-    // Default if we couldn't identify
-    return modelSizes.defaultSize;
-  }
+    // Rest of the function remains the same...
+}
   
   evaluateModelCompatibility(modelName, systemInfo) {
     // get model size
@@ -395,8 +398,8 @@ Provide 2-4 clarification questions that would help improve this report:
     // format: [architecture, minRam, maxRam, minSize, maxSize, comfortLevel]
     const compatibilityRules = [
       // Apple Silicon compatibility
-      ['appleSilicon', 0, 8, 0, 3, 'Easy'],         // Small models (0-3B)
-      ['appleSilicon', 0, 8, 3, 10, 'Difficult'],   // Medium models (3-10B) 
+      ['appleSilicon', 0, 8, 4, 10, 'Difficult'],   // Medium models (3-10B) 
+      ['appleSilicon', 0, 8, 0, 4, 'Easy'],         // Small models (0-3B)
       ['appleSilicon', 0, 8, 10, Infinity, 'Impossible'], // Large models (>10B)
       
       ['appleSilicon', 8, 16, 0, 10, 'Easy'],
@@ -433,8 +436,8 @@ Provide 2-4 clarification questions that would help improve this report:
     const matchingRule = compatibilityRules.find(rule => {
       const [arch, minRam, maxRam, minSize, maxSize] = rule;
       return arch === architecture && 
-             ram >= minRam && ram < maxRam && 
-             modelSizeInB >= minSize && modelSizeInB <= maxSize;
+             ram >= minRam && ram <= maxRam && 
+             modelSizeInB >= minSize && modelSizeInB < maxSize;
     }) || [architecture, 0, 0, 0, 0, 'Impossible'];
     
     // extract comfort level
@@ -447,12 +450,12 @@ Provide 2-4 clarification questions that would help improve this report:
         loadingMessage: null
       },
       'Difficult': {
-        message: 'should run slowly',
-        loadingMessage: 'This could take a few minutes.<br>Plenty of time for tea.'
+        message: 'may run slowly',
+        loadingMessage: 'This might take a few minutes.<br>Plenty of time for tea.'
       },
       'Impossible': {
-        message: 'not enough RAM',
-        loadingMessage: 'This probably will not run.<br>Suggest closing this program.'
+        message: 'too large for your RAM',
+        loadingMessage: 'This probably won\'t run.<br>Consider using a smaller model.'
       }
     };
         
