@@ -7,6 +7,18 @@ Phys.IO is a proof of concept desktop app that transforms clinical shorthand not
 - **Privacy First**: All processing happens on your device via Ollama, so no internet connection is required after set up
 - **Time Saving**: Converts shorthand into structured, professional correspondence
 - **Clarifying**: Identifies information gaps and asks targeted questions
+
+## Disclaimer
+
+PROTOTYPE ONLY - NOT FOR CLINICAL USE
+
+Phys.IO is provided "as is" without warranty. AI outputs have not been clinically validated and must be reviewed by qualified professionals before any use.
+
+No responsibility taken for decisions based on this application's outputs.
+
+Users are responsible for data protection compliance. This app has not been formally assessed against GDPR or privacy frameworks. Process patient data at your own risk.
+
+This rapid prototype is for concept exploration only and may change significantly in future versions.
   
 ## Screenshots
 
@@ -56,6 +68,11 @@ npm start
 ## Process Flow
 
 ![Phys.IO Process Flow](./docs/process-flow.png)
+
+## Prompt engineering approach
+
+- Main prompt was evolved through 3 versions (v1-v3), with iteration based on physiotherapist feedback. 
+- Prompts were developed using a test set of 3 fictional patients with paired clinical notes and reference letters written by a qualified physiotherapist. Each prompt version was evalauted against specific criteria using automated LLM evaluation to enable rapid development (see test/eval.py for evaluation pipeline).
 
 ## Privacy & Security
 
