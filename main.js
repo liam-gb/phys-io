@@ -18,7 +18,6 @@ function ensureDirectoryExists(dirPath) {
   return dirPath;
 }
 
-// Wrapper function for sessions directory
 function ensureSessionsDirectory() {
   return ensureDirectoryExists(sessionsDirectory);
 }
@@ -62,106 +61,100 @@ app.on('activate', () => {
   }
 });
 
-// Standard error handling for IPC handlers
-function createErrorHandler(errorMessage, consoleOnly = false) {
-  return (error) => {
-    console.error(`${errorMessage}:`, error);
-    
-    if (!consoleOnly) {
-      dialog.showErrorBox('Error', `${errorMessage}: ${error.message}`);
+// Error handler factory
+function createIpcHandler(handlerFn, errorOptions = {}) {
+  const { errorMessage, consoleOnly = false, fallbackValue = null } = errorOptions;
+  
+  return async (event, ...args) => {
+    try {
+      return await handlerFn(event, ...args);
+    } catch (error) {
+      console.error(`${errorMessage || 'Error in IPC handler'}:`, error);
+      
+      if (!consoleOnly) {
+        dialog.showErrorBox('Error', `${errorMessage || 'An error occurred'}: ${error.message}`);
+      }
+      
+      return fallbackValue;
     }
-    
-    return consoleOnly ? (Array.isArray(error) ? [] : null) : null;
   };
 }
 
 // IPC Handlers - Ollama client functions
-ipcMain.handle('generate-report', async (event, notes) => {
-  try {
-    return await ollamaClient.generateReport(notes);
-  } catch (error) {
-    return createErrorHandler('Failed to generate report')(error);
-  }
-});
+ipcMain.handle('generate-report', createIpcHandler(
+  async (event, notes) => await ollamaClient.generateReport(notes),
+  { errorMessage: 'Failed to generate report' }
+));
 
-ipcMain.handle('generate-clarification-questions', async (event, notes) => {
-  try {
-    return await ollamaClient.generateClarificationQuestions(notes);
-  } catch (error) {
-    return createErrorHandler('Failed to generate clarification questions', true)(error);
-  }
-});
+ipcMain.handle('generate-clarification-questions', createIpcHandler(
+  async (event, notes) => await ollamaClient.generateClarificationQuestions(notes),
+  { errorMessage: 'Failed to generate clarification questions', consoleOnly: true, fallbackValue: [] }
+));
 
-ipcMain.handle('generate-report-with-clarifications', async (event, notes, clarifications) => {
-  try {
-    return await ollamaClient.generateReportWithClarifications(notes, clarifications);
-  } catch (error) {
-    return createErrorHandler('Failed to generate report with clarifications')(error);
-  }
-});
+ipcMain.handle('generate-report-with-clarifications', createIpcHandler(
+  async (event, notes, clarifications) => await ollamaClient.generateReportWithClarifications(notes, clarifications),
+  { errorMessage: 'Failed to generate report with clarifications' }
+));
 
-ipcMain.handle('generate-conversational-response', async (event, contextPrompt) => {
-  try {
-    return await ollamaClient.generateConversationalResponse(contextPrompt);
-  } catch (error) {
-    return createErrorHandler('Failed to generate response')(error);
-  }
-});
+ipcMain.handle('generate-conversational-response', createIpcHandler(
+  async (event, contextPrompt) => await ollamaClient.generateConversationalResponse(contextPrompt),
+  { errorMessage: 'Failed to generate response' }
+));
 
 // IPC Handlers - Ollama connection and settings
-ipcMain.handle('check-ollama-connection', async () => {
-  try {
-    return await ollamaClient.checkConnection();
-  } catch (error) {
-    return createErrorHandler('Failed to check Ollama connection', true)(error);
-  }
-});
+ipcMain.handle('check-ollama-connection', createIpcHandler(
+  async () => await ollamaClient.checkConnection(),
+  { errorMessage: 'Failed to check Ollama connection', consoleOnly: true, fallbackValue: false }
+));
 
-ipcMain.handle('get-ollama-models', async () => {
-  try {
-    return await ollamaClient.getAvailableModels();
-  } catch (error) {
-    return createErrorHandler('Failed to get Ollama models', true)(error);
-  }
-});
+ipcMain.handle('get-ollama-models', createIpcHandler(
+  async () => await ollamaClient.getAvailableModels(),
+  { errorMessage: 'Failed to get Ollama models', consoleOnly: true, fallbackValue: [] }
+));
 
-ipcMain.handle('set-ollama-model', async (event, model) => {
-  ollamaClient.setModel(model);
-  return true;
-});
+ipcMain.handle('set-ollama-model', createIpcHandler(
+  async (event, model) => {
+    ollamaClient.setModel(model);
+    return true;
+  },
+  { errorMessage: 'Failed to set Ollama model', consoleOnly: true, fallbackValue: false }
+));
 
-ipcMain.handle('get-prompt-file', async () => {
-  return ollamaClient.getPromptFile();
-});
+ipcMain.handle('get-prompt-file', createIpcHandler(
+  async () => ollamaClient.getPromptFile(),
+  { errorMessage: 'Failed to get prompt file', consoleOnly: true, fallbackValue: 'v3.txt' }
+));
 
-ipcMain.handle('set-prompt-file', async (event, promptFile) => {
-  ollamaClient.setPromptFile(promptFile);
-  return true;
-});
+ipcMain.handle('set-prompt-file', createIpcHandler(
+  async (event, promptFile) => {
+    ollamaClient.setPromptFile(promptFile);
+    return true;
+  },
+  { errorMessage: 'Failed to set prompt file', consoleOnly: true, fallbackValue: false }
+));
 
 // IPC Handlers - System information
-ipcMain.handle('get-system-info', async () => {
-  try {
-    return await ollamaClient.getSystemInfo();
-  } catch (error) {
-    return createErrorHandler('Failed to get system info', true)(error);
-  }
-});
+ipcMain.handle('get-system-info', createIpcHandler(
+  async () => await ollamaClient.getSystemInfo(),
+  { errorMessage: 'Failed to get system info', consoleOnly: true, fallbackValue: null }
+));
 
-ipcMain.handle('evaluate-model-compatibility', async (event, modelName) => {
-  try {
+ipcMain.handle('evaluate-model-compatibility', createIpcHandler(
+  async (event, modelName) => {
     const systemInfo = await ollamaClient.getSystemInfo();
     return ollamaClient.evaluateModelCompatibility(modelName, systemInfo);
-  } catch (error) {
-    console.error('Failed to evaluate model compatibility:', error);
-    return {
+  },
+  { 
+    errorMessage: 'Failed to evaluate model compatibility',
+    consoleOnly: true, 
+    fallbackValue: {
       modelSizeInB: null,
       comfortLevel: 'Unknown',
       message: 'Could not determine compatibility.',
       loadingMessage: null
-    };
+    }
   }
-});
+));
 
 // Helper to generate a unique ID
 function generateUniqueId() {
@@ -170,12 +163,10 @@ function generateUniqueId() {
 
 // Session management utilities
 function prepareSessionData(sessionData) {
-  // If no ID exists, create one
   if (!sessionData.id) {
     sessionData.id = generateUniqueId();
   }
   
-  // Add timestamp if not provided
   if (!sessionData.savedAt) {
     sessionData.savedAt = new Date().toISOString();
   }
@@ -188,22 +179,24 @@ function getSessionFilePath(sessionId) {
 }
 
 // Session management handlers
-ipcMain.handle('save-session', async (event, sessionData) => {
-  try {
+ipcMain.handle('save-session', createIpcHandler(
+  async (event, sessionData) => {
     ensureSessionsDirectory();
     sessionData = prepareSessionData(sessionData);
     const filePath = getSessionFilePath(sessionData.id);
     
     fs.writeFileSync(filePath, JSON.stringify(sessionData, null, 2), 'utf8');
     return { success: true, id: sessionData.id };
-  } catch (error) {
-    console.error('Failed to save session:', error);
-    return { success: false, error: error.message };
+  },
+  { 
+    errorMessage: 'Failed to save session', 
+    consoleOnly: false, 
+    fallbackValue: { success: false, error: 'Failed to save session' } 
   }
-});
+));
 
-ipcMain.handle('load-sessions-list', async () => {
-  try {
+ipcMain.handle('load-sessions-list', createIpcHandler(
+  async () => {
     ensureSessionsDirectory();
     
     const files = fs.readdirSync(sessionsDirectory)
@@ -230,7 +223,6 @@ ipcMain.handle('load-sessions-list', async () => {
     })
     .filter(Boolean)
     .sort((a, b) => {
-      // Sort by saved date (newest first)
       if (a.savedAt && b.savedAt) {
         return new Date(b.savedAt) - new Date(a.savedAt);
       }
@@ -238,14 +230,12 @@ ipcMain.handle('load-sessions-list', async () => {
     });
     
     return sessions;
-  } catch (error) {
-    console.error('Failed to load sessions list:', error);
-    return [];
-  }
-});
+  },
+  { errorMessage: 'Failed to load sessions list', consoleOnly: true, fallbackValue: [] }
+));
 
-ipcMain.handle('load-session', async (event, sessionId) => {
-  try {
+ipcMain.handle('load-session', createIpcHandler(
+  async (event, sessionId) => {
     const filePath = getSessionFilePath(sessionId);
     
     if (!fs.existsSync(filePath)) {
@@ -255,18 +245,15 @@ ipcMain.handle('load-session', async (event, sessionId) => {
     const rawData = fs.readFileSync(filePath, 'utf8');
     const sessionData = JSON.parse(rawData);
     
-    // Ensure the ID matches the filename
     sessionData.id = sessionId;
     
     return sessionData;
-  } catch (error) {
-    console.error('Failed to load session:', error);
-    return null;
-  }
-});
+  },
+  { errorMessage: 'Failed to load session', consoleOnly: false, fallbackValue: null }
+));
 
-ipcMain.handle('delete-session', async (event, sessionId) => {
-  try {
+ipcMain.handle('delete-session', createIpcHandler(
+  async (event, sessionId) => {
     const filePath = getSessionFilePath(sessionId);
     
     if (fs.existsSync(filePath)) {
@@ -274,14 +261,12 @@ ipcMain.handle('delete-session', async (event, sessionId) => {
       return true;
     }
     return false;
-  } catch (error) {
-    console.error('Failed to delete session:', error);
-    return false;
-  }
-});
+  },
+  { errorMessage: 'Failed to delete session', consoleOnly: true, fallbackValue: false }
+));
 
-ipcMain.handle('save-report', async (event, reportText, suggestedName) => {
-  try {
+ipcMain.handle('save-report', createIpcHandler(
+  async (event, reportText, suggestedName) => {
     const defaultPath = suggestedName 
       ? path.join(app.getPath('documents'), suggestedName) 
       : path.join(app.getPath('documents'), 'physio-report.txt');
@@ -299,14 +284,12 @@ ipcMain.handle('save-report', async (event, reportText, suggestedName) => {
       return true;
     }
     return false;
-  } catch (error) {
-    dialog.showErrorBox('Error', `Failed to save report: ${error.message}`);
-    return false;
-  }
-});
+  },
+  { errorMessage: 'Failed to save report', consoleOnly: false, fallbackValue: false }
+));
 
-ipcMain.handle('load-notes', async () => {
-  try {
+ipcMain.handle('load-notes', createIpcHandler(
+  async () => {
     const { filePaths } = await dialog.showOpenDialog({
       properties: ['openFile'],
       filters: [
@@ -319,11 +302,9 @@ ipcMain.handle('load-notes', async () => {
       return fs.readFileSync(filePaths[0], 'utf8');
     }
     return null;
-  } catch (error) {
-    dialog.showErrorBox('Error', `Failed to load notes: ${error.message}`);
-    return null;
-  }
-});
+  },
+  { errorMessage: 'Failed to load notes', consoleOnly: false, fallbackValue: null }
+));
 
 // File loading utility function
 function loadContentFile(basePath, filename) {
@@ -339,18 +320,28 @@ function loadContentFile(basePath, filename) {
   }
 }
 
-ipcMain.handle('load-doc-file', async (event, filename) => {
-  const content = loadContentFile('docs', filename);
-  if (content === null) {
-    return `Error: Document file "${filename}" not found`;
+ipcMain.handle('load-doc-file', createIpcHandler(
+  async (event, filename) => {
+    const content = loadContentFile('docs', filename);
+    if (content === null) {
+      return `Error: Document file "${filename}" not found`;
+    }
+    return content;
+  },
+  { 
+    errorMessage: 'Failed to load document file', 
+    consoleOnly: true, 
+    fallbackValue: 'Error: Could not load the requested document file' 
   }
-  return content;
-});
+));
 
-ipcMain.handle('load-prompt-file', async (event, filename) => {
-  const content = loadContentFile('prompts', filename);
-  if (content === null) {
-    console.warn(`Prompt file not found: ${filename}`);
-  }
-  return content;
-});
+ipcMain.handle('load-prompt-file', createIpcHandler(
+  async (event, filename) => {
+    const content = loadContentFile('prompts', filename);
+    if (content === null) {
+      console.warn(`Prompt file not found: ${filename}`);
+    }
+    return content;
+  },
+  { errorMessage: 'Failed to load prompt file', consoleOnly: true, fallbackValue: null }
+));
