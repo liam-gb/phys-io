@@ -13,3 +13,4 @@ eval.log
 eval_analysis.ipynb
 pipeline.log
 test/__pycache__/
+debug_log.txt
