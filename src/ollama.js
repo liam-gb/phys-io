@@ -45,39 +45,29 @@ const store = {
 class PromptManager {
   constructor(basePath) {
     this.basePath = basePath || path.join(__dirname, '..', 'prompts');
-    console.log(`||| Initializing PromptManager with base path: ${this.basePath}`);
     this.cache = {}; // Cache loaded prompts
   }
   
   getPromptTemplate(name) {
     // Normalize name to ensure it ends with .txt
     const promptName = name.endsWith('.txt') ? name : `${name}.txt`;
-    
-    console.log(`||| Getting prompt template: ${promptName}`);
-    
+        
     // Check cache first
     if (this.cache[promptName]) {
-      console.log(`||| Found template in cache: ${promptName}`);
       return this.cache[promptName];
     }
     
     // Load from disk
     try {
       const promptPath = path.join(this.basePath, promptName);
-      console.log(`||| Loading template from disk: ${promptPath}`);
       
       if (fs.existsSync(promptPath)) {
-        console.log(`||| Template file exists, reading...`);
         const template = fs.readFileSync(promptPath, 'utf8');
         this.cache[promptName] = template;
-        console.log(`||| Successfully loaded template (${template.length} chars)`);
         return template;
       }
       
-      console.log(`||| Prompt file not found: ${promptPath}`);
-      throw new Error(`Prompt file not found: ${promptName}`);
     } catch (error) {
-      console.error(`||| Error reading prompt file ${promptName}:`, error);
       errorHandler.log(`Error reading prompt file ${promptName}`, error);
       throw error;
     }
@@ -164,31 +154,24 @@ class OllamaClient {
   // Helper method to make text generation requests to Ollama
   async makeOllamaRequest(prompt) {
     try {
-      console.log(`||| ollama.js - Making request with model: ${this.model}, prompt length: ${prompt ? prompt.length : 0}`);
       const result = await this.makeHttpRequest('/api/generate', 'POST', {
         model: this.model,
         prompt: prompt,
         stream: false
       });
       
-      console.log(`||| ollama.js - Request successful, got response: ${result && result.response ? 'yes' : 'no'}`);
       return result.response;
     } catch (error) {
-      console.error(`||| ollama.js - makeOllamaRequest error:`, error);
       throw error;
     }
   }
 
   async generateReport(notes) {
     try {
-      console.log(`||| ollama.js - generateReport starting`);
       const prompt = this.promptManager.getPrompt(this.promptFile, { notes });
-      console.log(`||| ollama.js - Calling makeOllamaRequest for report`);
       const result = await this.makeOllamaRequest(prompt);
-      console.log(`||| ollama.js - Report generated, length: ${result ? result.length : 0}`);
       return result;
     } catch (error) {
-      console.error(`||| ollama.js - Error generating report:`, error);
       errorHandler.log('Error generating report', error);
       throw error;
     }
@@ -196,12 +179,10 @@ class OllamaClient {
 
   async generateClarificationQuestions(notes, generatedReport = "") {
     try {
-      console.log('||| ollama.js - generateClarificationQuestions starting');
       const templateName = 'clarification-questions';
       
       try {
         const promptTemplate = this.promptManager.getPromptTemplate(templateName);
-        console.log('||| ollama.js - got template:', promptTemplate ? 'yes' : 'no');
         
         const prompt = `
 ${promptTemplate}
@@ -216,28 +197,20 @@ Provide 2-4 clarification questions that would help improve this report:
 `;
 
         // Make the request to generate clarification questions
-        console.log('||| ollama.js - Making request for questions with model:', this.model);
         const response = await this.makeOllamaRequest(prompt);
-        console.log('||| ollama.js - Received questions response:', response ? 'yes' : 'no');
         
         if (response) {
-          // Log some basic info about the response
-          console.log('||| ollama.js - Response length:', response.length);
-          console.log('||| ollama.js - Response excerpt:', response.substring(0, 50) + '...');
           
           // Check if we got a structured response with questions
           const questionLines = response.split('\n').filter(line => /^\d+\./.test(line.trim()));
-          console.log('||| ollama.js - Found question lines:', questionLines.length);
         }
         
         // Simply return the response - the renderer will handle extraction
         return response;
       } catch (innerError) {
-        console.error('||| ollama.js - Inner error getting template:', innerError);
         throw innerError;
       }
     } catch (error) {
-      console.error('||| ollama.js - Error generating clarification questions:', error);
       errorHandler.log('Error generating clarification questions', error);
       throw error;
     }
@@ -274,18 +247,15 @@ Provide 2-4 clarification questions that would help improve this report:
 
   async checkConnection() {
     try {
-      console.log('Attempting ollama connection to:', this.baseUrl);
       
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
-          console.log('Ollama connection timeout');
           resolve(false);
         }, 5000); // 5s timeout
         
         this.makeHttpRequest('/api/tags', 'GET')
           .then(data => {
             clearTimeout(timeout);
-            console.log('Ollama models found:', data.models?.length || 0);
             resolve(true);
           })
           .catch(error => {
@@ -364,7 +334,6 @@ Provide 2-4 clarification questions that would help improve this report:
   }
   
   estimateModelParameters(modelName) {
-    console.log(`Estimating parameters for model: ${modelName}`);
     
     let modelSizeInB = null;
     const lowerModelName = modelName.toLowerCase();
@@ -379,7 +348,6 @@ Provide 2-4 clarification questions that would help improve this report:
     // Check special cases first
     for (const [specialCase, size] of Object.entries(modelSizes.specialCases)) {
       if (lowerModelName.includes(specialCase.toLowerCase())) {
-        console.log(`Matched special case ${specialCase}: ${size}B`);
         return size;
       }
     }
@@ -388,34 +356,29 @@ Provide 2-4 clarification questions that would help improve this report:
     const sizeMatch = lowerModelName.match(/[:-](\d+(?:\.\d+)?)b/i);
     if (sizeMatch && sizeMatch[1]) {
       modelSizeInB = parseFloat(sizeMatch[1]);
-      console.log(`Extracted parameter count from name: ${modelSizeInB}B`);
       return modelSizeInB;
     }
     
     // Check specific models
     for (const [model, size] of Object.entries(modelSizes.specificModels)) {
       if (lowerModelName.includes(model.toLowerCase())) {
-        console.log(`Matched specific model ${model}: ${size}B`);
         return size;
       }
     }
     
     // Handle specific deepseek variants that don't follow standard pattern
     if (lowerModelName.includes('deepseek') && lowerModelName.includes('1.5')) {
-      console.log('Matched deepseek 1.5B variant');
       return 1.5;
     }
     
     // Check model families
     for (const [family, size] of Object.entries(modelSizes.modelFamilies)) {
       if (lowerModelName.includes(family.toLowerCase())) {
-        console.log(`Matched model family ${family}: ${size}B`);
         return size;
       }
     }
     
     // Default if we couldn't identify
-    console.log(`Could not identify model size, defaulting to ${modelSizes.defaultSize}B`);
     return modelSizes.defaultSize;
   }
   
@@ -432,24 +395,38 @@ Provide 2-4 clarification questions that would help improve this report:
     // format: [architecture, minRam, maxRam, minSize, maxSize, comfortLevel]
     const compatibilityRules = [
       // Apple Silicon compatibility
-      ['appleSilicon', 0, 8, 0, 7, 'Easy'],
-      ['appleSilicon', 0, 8, 7, 13, 'Difficult'],
-      ['appleSilicon', 8, 16, 0, 13, 'Easy'],
-      ['appleSilicon', 8, 16, 13, 33, 'Difficult'],
-      ['appleSilicon', 16, 32, 0, 33, 'Easy'],
-      ['appleSilicon', 16, 32, 33, 70, 'Difficult'],
-      ['appleSilicon', 32, Infinity, 0, 70, 'Easy'],
-      ['appleSilicon', 32, Infinity, 70, 100, 'Difficult'],
+      ['appleSilicon', 0, 8, 0, 3, 'Easy'],         // Small models (0-3B)
+      ['appleSilicon', 0, 8, 3, 10, 'Difficult'],   // Medium models (3-10B) 
+      ['appleSilicon', 0, 8, 10, Infinity, 'Impossible'], // Large models (>10B)
+      
+      ['appleSilicon', 8, 16, 0, 10, 'Easy'],
+      ['appleSilicon', 8, 16, 10, 20, 'Difficult'],
+      ['appleSilicon', 8, 16, 20, Infinity, 'Impossible'],
+      
+      ['appleSilicon', 16, 32, 0, 20, 'Easy'],
+      ['appleSilicon', 16, 32, 20, 40, 'Difficult'],
+      ['appleSilicon', 16, 32, 40, Infinity, 'Impossible'],
+      
+      ['appleSilicon', 32, Infinity, 0, 40, 'Easy'],
+      ['appleSilicon', 32, Infinity, 40, 80, 'Difficult'],
+      ['appleSilicon', 32, Infinity, 80, Infinity, 'Impossible'],
       
       // Other architectures
-      ['other', 0, 8, 0, 3, 'Easy'],
-      ['other', 0, 8, 3, 7, 'Difficult'],
-      ['other', 8, 16, 0, 7, 'Easy'],
-      ['other', 8, 16, 7, 13, 'Difficult'],
-      ['other', 16, 32, 0, 13, 'Easy'],
-      ['other', 16, 32, 13, 33, 'Difficult'],
-      ['other', 32, Infinity, 0, 33, 'Easy'],
-      ['other', 32, Infinity, 33, 70, 'Difficult']
+      ['other', 0, 8, 0, 2, 'Easy'],
+      ['other', 0, 8, 2, 5, 'Difficult'],
+      ['other', 0, 8, 5, Infinity, 'Impossible'],
+      
+      ['other', 8, 16, 0, 5, 'Easy'],
+      ['other', 8, 16, 5, 10, 'Difficult'],
+      ['other', 8, 16, 10, Infinity, 'Impossible'],
+      
+      ['other', 16, 32, 0, 10, 'Easy'],
+      ['other', 16, 32, 10, 20, 'Difficult'],
+      ['other', 16, 32, 20, Infinity, 'Impossible'],
+      
+      ['other', 32, Infinity, 0, 20, 'Easy'],
+      ['other', 32, Infinity, 20, 40, 'Difficult'],
+      ['other', 32, Infinity, 40, Infinity, 'Impossible']
     ];
     
     // find matching rule
@@ -478,10 +455,7 @@ Provide 2-4 clarification questions that would help improve this report:
         loadingMessage: 'This probably will not run.<br>Suggest closing this program.'
       }
     };
-    
-    // log for debugging
-    console.log(`Model ${modelName} (${modelSizeInB}B) on ${architecture} with ${ram}GB RAM: ${comfortLevel}`);
-    
+        
     return {
       modelSizeInB,
       comfortLevel,

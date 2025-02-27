@@ -1486,16 +1486,16 @@ function removeThinking(text) {
   if (text === cleanedText || !text.match(/<thinking>[\s\S]*?<\/thinking>/gi)) {
     // Check for REFERRAL LETTER marker (for letters)
     if (cleanedText.includes('**REFERRAL LETTER**')) {
-      const parts = cleanedText.split('**REFERRAL LETTER**');
-      if (parts.length > 1) {
-        // Take everything after the REFERRAL LETTER marker
-        return parts[1].trim();
+      const lastIndex = cleanedText.lastIndexOf('**REFERRAL LETTER**');
+      if (lastIndex !== -1) {
+        // Take everything after the LAST occurrence
+        return cleanedText.substring(lastIndex + '**REFERRAL LETTER**'.length).trim();
       }
     }
     
     // Check for TITLE marker (for session titles)
     if (cleanedText.includes('**TITLE:**')) {
-      const parts = cleanedText.split('**TITLE:**');
+      const parts = cleanedText.lastIndexOf('**TITLE:**');
       if (parts.length > 1) {
         // Take everything after the TITLE marker
         return parts[1].trim();
