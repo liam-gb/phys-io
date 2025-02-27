@@ -1,6 +1,6 @@
 # About Phys.IO
 
-Phys.IO is a proof-of-concept desktop app that converts medical notes to professional physiotherapy letters using local AI.
+Phys.IO is a proof-of-concept desktop app that converts medical notes to referral letters for physiotherapists using local AI.
 
 ## Features
 
