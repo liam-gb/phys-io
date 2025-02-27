@@ -5,8 +5,8 @@ Phys.IO is a proof of concept desktop app that transforms clinical shorthand not
 ## Features
 
 - **Privacy First**: All processing happens on your device via Ollama, so no internet connection is required after set up
-- **Notes Transformed**: Converts shorthand into structured, professional correspondence
-- **Clarification System**: Identifies information gaps and asks targeted questions
+- **Time Saving**: Converts shorthand into structured, professional correspondence
+- **Clarifying**: Identifies information gaps and asks targeted questions
   
 ## Screenshots
 
@@ -48,6 +48,14 @@ npm start
 3. AI identifies missing information and asks clarifying questions
 4. Answer the questions to improve the output
 5. Export the final letter as needed
+
+## System Architecture
+
+![Phys.IO System Architecture](./docs/system-architecture.png)
+
+## Process Flow
+
+![Phys.IO Process Flow](./docs/process-flow.png)
 
 ## Privacy & Security
 
