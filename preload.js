@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('api', {
   // Ollama functions
   ollama: {
     generateReport: (notes) => ipcRenderer.invoke('generate-report', notes),
-    generateClarificationQuestions: (notes) => ipcRenderer.invoke('generate-clarification-questions', notes),
+    generateClarificationQuestions: (notes, reportText) => ipcRenderer.invoke('generate-clarification-questions', notes, reportText),
     generateReportWithClarifications: (notes, clarifications) => 
       ipcRenderer.invoke('generate-report-with-clarifications', notes, clarifications),
     generateConversationalResponse: (contextPrompt) => 

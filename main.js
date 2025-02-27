@@ -235,7 +235,7 @@ registerIpcHandlers({
     options: { errorMessage: 'Failed to generate report' }
   },
   'generate-clarification-questions': {
-    fn: async (event, notes) => await ollamaClient.generateClarificationQuestions(notes),
+    fn: async (event, notes, reportText) => await ollamaClient.generateClarificationQuestions(notes, reportText),
     options: { errorMessage: 'Failed to generate clarification questions', consoleOnly: true, fallbackValue: [] }
   },
   'generate-report-with-clarifications': {
