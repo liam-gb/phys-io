@@ -126,18 +126,13 @@ class SessionManager {
   async cleanup() {
     try {
       const sessions = await this.loadList();
+      const problematicSessions = sessions.filter(
+        session => !session.title && !session.patientName
+      );
       
-      // find problematic sessions
-      const problematicSessions = sessions.filter(session => {
-        return !session.title && !session.patientName;
-      });
-      
-      console.log(`Found ${problematicSessions.length} problematic sessions to clean up`);
-      
-      // delete them
-      for (const session of problematicSessions) {
-        await this.delete(session.id);
-      }
+      await Promise.all(problematicSessions.map(
+        session => this.delete(session.id)
+      ));
       
       return problematicSessions.length;
     } catch (error) {
