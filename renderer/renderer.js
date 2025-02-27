@@ -103,26 +103,6 @@ const errorHandler = {
   }
 };
 
-// Centralized error handler for renderer process
-const errorHandler = {
-  // Log to console only
-  log: (message, error) => {
-    console.error(`Error: ${message}`, error);
-  },
-  
-  // Show error in toast notification
-  toast: (message, error) => {
-    console.error(`Error: ${message}`, error);
-    showToast(message, true);
-  },
-  
-  // Display error in conversation history
-  display: (message, error) => {
-    console.error(`Error: ${message}`, error);
-    addErrorMessage(message);
-  }
-};
-
 // Check Ollama connection
 async function checkOllamaConnection() {
   try {
@@ -334,9 +314,7 @@ async function sendMessage() {
   if (currentSession.isInitialMessage) {
     await generateInitialReport(text);
     currentSession.isInitialMessage = false;
-    
-    // Generate a meaningful title for the session
-    await generateSessionTitle();
+    // Note: generateSessionTitle is now called from within generateInitialReport
   } else {
     await generateResponse();
   }
@@ -368,20 +346,6 @@ async function generateInitialReport(notes) {
         updateSessionInSidebar();
       }
       
-      // Small delay to ensure loading message is gone
-      setTimeout(() => {
-        // Add the letter to the conversation
-        addMessageToUI('letter', response);
-        
-        // Add system message indicating letter is ready
-        addSystemMessage("Your letter is ready.");
-        
-        // Generate clarification questions with a small delay
-        setTimeout(() => {
-          generateClarificationQuestions(notes, response);
-        }, 300);
-      }, 300);
-      
       // Add to session
       currentSession.messages.push({
         role: 'assistant',
@@ -392,6 +356,27 @@ async function generateInitialReport(notes) {
       
       // Update current report index
       currentSession.currentReportIndex = currentSession.messages.length - 1;
+      
+      // Small delay to ensure loading message is gone
+      setTimeout(async () => {
+        try {
+          // Add the letter to the conversation
+          addMessageToUI('letter', response);
+          
+          // Add system message indicating letter is ready
+          addSystemMessage("Your letter is ready.");
+          
+          // Generate session title - wait for this to complete before moving on
+          await generateSessionTitle();
+          
+          // Generate clarification questions - increased delay for reliable sequencing
+          setTimeout(() => {
+            generateClarificationQuestions(notes, response);
+          }, 500);
+        } catch (err) {
+          console.error('Error in UI update sequence:', err);
+        }
+      }, 300);
     } else {
       errorHandler.display("Failed to generate letter. Please check if Ollama is running.", new Error("Empty response"));
     }
@@ -404,11 +389,15 @@ async function generateInitialReport(notes) {
 
 // Generate clarification questions based on the notes and generated report
 async function generateClarificationQuestions(notes, reportText) {
+  console.log('Starting clarification questions generation');
+  
   // Show loading message for questions generation
   const loadingId = addLoadingMessage('clarification');
   
   try {
+    console.log('Calling API to generate clarification questions');
     const questionsResponse = await window.api.ollama.generateClarificationQuestions(notes, reportText);
+    console.log('Received response from API:', questionsResponse ? 'non-empty' : 'empty');
     
     // Remove loading message
     removeLoadingMessage(loadingId);
@@ -417,26 +406,44 @@ async function generateClarificationQuestions(notes, reportText) {
     const compatibility = await evaluateModelCompatibility(currentSession.model);
     
     // Process the response - could be raw text with thinking tags
+    console.log('Processing clarification questions response:', questionsResponse);
     let extractedQuestions = [];
     
     // Check if the response is already an array of questions
     if (Array.isArray(questionsResponse) && questionsResponse.length > 0) {
+      console.log('Response is an array, using directly');
       extractedQuestions = questionsResponse;
     } else if (typeof questionsResponse === 'string') {
-      // Extract thinking part to display separately
-      const thinkingContent = extractThinking(questionsResponse);
+      console.log('Response is a string, extracting questions');
       
       // Get the cleaned content (without thinking tags)
       const cleanedContent = removeThinking(questionsResponse);
+      console.log('Cleaned content:', cleanedContent);
       
       // Try to extract numbered questions from the cleaned content
-      extractedQuestions = cleanedContent.split('\n')
+      const lines = cleanedContent.split('\n');
+      console.log('Lines count:', lines.length);
+      
+      extractedQuestions = lines
         .filter(line => /^\d+\./.test(line.trim()))
         .map(line => line.trim());
       
-      // If no questions were found in the expected format, use the whole content
+      console.log('Extracted questions using split/filter:', extractedQuestions);
+      
+      // If no questions were found in the expected format, try alternatives
       if (extractedQuestions.length === 0) {
-        extractedQuestions = [cleanedContent.trim()];
+        console.log('No questions found with first method, trying regex');
+        
+        // Try alternative regex patterns to find questions
+        const questionMatches = cleanedContent.match(/^\d+\.\s+(.+)$/gm);
+        if (questionMatches && questionMatches.length > 0) {
+          console.log('Found questions with regex:', questionMatches.length);
+          extractedQuestions = questionMatches.map(q => q.trim());
+        } else {
+          console.log('No questions found with regex, using whole content');
+          // Last resort: use the whole content as a single question
+          extractedQuestions = [cleanedContent.trim()];
+        }
       }
     }
     
@@ -1237,25 +1244,39 @@ function renderMessage(element, content, options = {}) {
 // Helper for rendering just the thinking content
 function renderThinkingContent(element, content) {
   // Format thinking content with markdown-like styling
-  const formattedThinking = content
+  const formattedLines = content
     .split('\n')
     .map(line => {
-      if (line.startsWith('-')) {
-        return `<li>${line.substring(1).trim()}</li>`;
-      } else if (line.trim().length > 0) {
-        return `<p>${line}</p>`;
+      const trimmedLine = line.trim();
+      if (trimmedLine.startsWith('-')) {
+        // Remove bullet and clean up the line
+        return `<li>${trimmedLine.substring(1).trim()}</li>`;
+      } else if (trimmedLine.length > 0) {
+        return `<p>${trimmedLine}</p>`;
       } else {
         return '';
       }
     })
     .join('');
 
-  element.innerHTML = `
-    <div class="thinking-content">
-      <h4>AI Thinking:</h4>
-      <ul>${formattedThinking}</ul>
-    </div>
-  `;
+  // Check if we have list items
+  const hasListItems = formattedLines.includes('<li>');
+  
+  if (hasListItems) {
+    element.innerHTML = `
+      <div class="thinking-content">
+        <h4>AI Thinking:</h4>
+        <ul>${formattedLines}</ul>
+      </div>
+    `;
+  } else {
+    element.innerHTML = `
+      <div class="thinking-content">
+        <h4>AI Thinking:</h4>
+        <div class="thinking-text">${formattedLines}</div>
+      </div>
+    `;
+  }
 }
 
 function addSystemMessage(content) {
