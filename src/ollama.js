@@ -34,6 +34,55 @@ const store = {
   }
 };
 
+// Centralized prompt management
+class PromptManager {
+  constructor(basePath) {
+    this.basePath = basePath || path.join(__dirname, '..', 'prompts');
+    this.cache = {}; // Cache loaded prompts
+  }
+  
+  getPromptTemplate(name) {
+    // Normalize name to ensure it ends with .txt
+    const promptName = name.endsWith('.txt') ? name : `${name}.txt`;
+    
+    // Check cache first
+    if (this.cache[promptName]) {
+      return this.cache[promptName];
+    }
+    
+    // Load from disk
+    try {
+      const promptPath = path.join(this.basePath, promptName);
+      if (fs.existsSync(promptPath)) {
+        const template = fs.readFileSync(promptPath, 'utf8');
+        this.cache[promptName] = template;
+        return template;
+      }
+      
+      throw new Error(`Prompt file not found: ${promptName}`);
+    } catch (error) {
+      console.error(`Error reading prompt file ${promptName}:`, error);
+      throw error;
+    }
+  }
+  
+  formatPrompt(template, replacements = {}) {
+    return Object.entries(replacements).reduce(
+      (prompt, [key, value]) => prompt.replace(new RegExp(`{{${key}}}`, 'g'), value),
+      template
+    );
+  }
+  
+  getPrompt(name, replacements = {}) {
+    const template = this.getPromptTemplate(name);
+    return this.formatPrompt(template, replacements);
+  }
+  
+  clearCache() {
+    this.cache = {};
+  }
+}
+
 class OllamaClient {
   constructor() {
     this.baseUrl = store.get('ollamaEndpoint', 'http://localhost:11434');
@@ -42,21 +91,8 @@ class OllamaClient {
     // Get the prompt file from configuration - default to v3.txt
     this.promptFile = store.get('promptFile', 'v3.txt');
     
-  }
-
-  // Helper method to read prompt files
-  readPromptFile(promptName) {
-    try {
-      const promptPath = path.join(__dirname, '..', 'prompts', promptName);
-      if (fs.existsSync(promptPath)) {
-        return fs.readFileSync(promptPath, 'utf8');
-      }
-      
-      throw new Error(`Prompt file not found: ${promptName}`);
-    } catch (error) {
-      console.error(`Error reading prompt file ${promptName}:`, error);
-      throw error;
-    }
+    // Initialize prompt manager
+    this.promptManager = new PromptManager();
   }
 
   // Helper method to make HTTP requests to Ollama API
@@ -128,12 +164,7 @@ class OllamaClient {
 
   async generateReport(notes) {
     try {
-      // Read the prompt template from the specified prompt file - will throw error if not found
-      const promptTemplate = this.readPromptFile(this.promptFile);
-      
-      // Replace the {{notes}} placeholder with the actual notes
-      const prompt = promptTemplate.replace('{{notes}}', notes);
-
+      const prompt = this.promptManager.getPrompt(this.promptFile, { notes });
       return await this.makeOllamaRequest(prompt);
     } catch (error) {
       console.error('Error generating report:', error);
@@ -143,9 +174,9 @@ class OllamaClient {
 
   async generateClarificationQuestions(notes, generatedReport = "") {
     try {
-      // Read the clarification questions prompt template - will throw error if not found
-      const promptTemplate = this.readPromptFile('clarification-questions.txt');
-
+      const templateName = 'clarification-questions';
+      const promptTemplate = this.promptManager.getPromptTemplate(templateName);
+      
       const prompt = `
 ${promptTemplate}
 
@@ -158,11 +189,7 @@ ${generatedReport}` : ""}
 Provide 2-4 clarification questions that would help improve this report:
 `;
 
-      const response = await this.makeOllamaRequest(prompt);
-      
-      // Instead of parsing the response here, return the full text
-      // The renderer will handle extracting thinking tags and parsing questions
-      return response;
+      return await this.makeOllamaRequest(prompt);
     } catch (error) {
       console.error('Error generating clarification questions:', error);
       throw error;
@@ -171,22 +198,18 @@ Provide 2-4 clarification questions that would help improve this report:
 
   async generateReportWithClarifications(notes, clarifications) {
     try {
-      // Read the main prompt template (same one used for the initial report)
-      const mainPromptTemplate = this.readPromptFile(this.promptFile);
-
-      // Replace the {{notes}} placeholder in the main prompt
-      const mainPrompt = mainPromptTemplate.replace('{{notes}}', notes);
+      const mainPrompt = this.promptManager.getPrompt(this.promptFile, { notes });
       
-      // Read the clarification report prompt template
-      const clarificationTemplate = this.readPromptFile('clarification-report.txt');
+      const clarificationsFormatted = Array.isArray(clarifications) 
+        ? clarifications.join('\n') 
+        : clarifications;
       
-      // Replace placeholders in the clarification template
-      const prompt = clarificationTemplate
-        .replace('{{main_prompt}}', mainPrompt)
-        .replace('{{clarifications}}', Array.isArray(clarifications) ? clarifications.join('\n') : clarifications);
+      const prompt = this.promptManager.getPrompt('clarification-report', { 
+        main_prompt: mainPrompt,
+        clarifications: clarificationsFormatted
+      });
 
-      const response = await this.makeOllamaRequest(prompt);
-      return response;
+      return await this.makeOllamaRequest(prompt);
     } catch (error) {
       console.error('Error generating report with clarifications:', error);
       throw error;
@@ -314,7 +337,7 @@ Provide 2-4 clarification questions that would help improve this report:
       }
     }
     
-    // Try to extract explicit parameter count - IMPROVED to handle decimal sizes
+    // Try to extract explicit parameter count
     const sizeMatch = lowerModelName.match(/[:-](\d+(?:\.\d+)?)b/i);
     if (sizeMatch && sizeMatch[1]) {
       modelSizeInB = parseFloat(sizeMatch[1]);
