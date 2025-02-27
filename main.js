@@ -140,15 +140,17 @@ class SessionManager {
   async cleanup() {
     try {
       const sessions = await this.loadList();
-      const problematicSessions = sessions.filter(
-        session => !session.title && !session.patientName
+      const untitledSessions = sessions.filter(
+        session => (!session.title || session.title === 'Untitled Session') && 
+                   (!session.patientName) && 
+                   (session.messageCount === 0 || !session.messageCount)
       );
       
-      await Promise.all(problematicSessions.map(
+      await Promise.all(untitledSessions.map(
         session => this.delete(session.id)
       ));
       
-      return problematicSessions.length;
+      return untitledSessions.length;
     } catch (error) {
       errorHandler.log('Error during cleanup', error);
       return 0;
@@ -189,7 +191,9 @@ app.whenReady().then(async () => {
   createWindow();
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
+  await sessionManager.cleanup();
+  
   if (process.platform !== 'darwin') {
     app.quit();
   }
