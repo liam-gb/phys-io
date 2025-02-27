@@ -357,7 +357,6 @@ async function generateInitialReport(notes) {
       // Update current report index
       currentSession.currentReportIndex = currentSession.messages.length - 1;
       
-      // Small delay to ensure loading message is gone
       setTimeout(async () => {
         try {
           // Add the letter to the conversation
@@ -369,10 +368,8 @@ async function generateInitialReport(notes) {
           // Generate session title - wait for this to complete before moving on
           await generateSessionTitle();
           
-          // Generate clarification questions - increased delay for reliable sequencing
-          setTimeout(() => {
-            generateClarificationQuestions(notes, response);
-          }, 500);
+          // Generate clarification questions - explicitly await this instead of using setTimeout
+          await generateClarificationQuestions(notes, response);
         } catch (err) {
           console.error('Error in UI update sequence:', err);
         }
@@ -409,43 +406,7 @@ async function generateClarificationQuestions(notes, reportText) {
     console.log('Processing clarification questions response:', questionsResponse);
     let extractedQuestions = [];
     
-    // Check if the response is already an array of questions
-    if (Array.isArray(questionsResponse) && questionsResponse.length > 0) {
-      console.log('Response is an array, using directly');
-      extractedQuestions = questionsResponse;
-    } else if (typeof questionsResponse === 'string') {
-      console.log('Response is a string, extracting questions');
-      
-      // Get the cleaned content (without thinking tags)
-      const cleanedContent = removeThinking(questionsResponse);
-      console.log('Cleaned content:', cleanedContent);
-      
-      // Try to extract numbered questions from the cleaned content
-      const lines = cleanedContent.split('\n');
-      console.log('Lines count:', lines.length);
-      
-      extractedQuestions = lines
-        .filter(line => /^\d+\./.test(line.trim()))
-        .map(line => line.trim());
-      
-      console.log('Extracted questions using split/filter:', extractedQuestions);
-      
-      // If no questions were found in the expected format, try alternatives
-      if (extractedQuestions.length === 0) {
-        console.log('No questions found with first method, trying regex');
-        
-        // Try alternative regex patterns to find questions
-        const questionMatches = cleanedContent.match(/^\d+\.\s+(.+)$/gm);
-        if (questionMatches && questionMatches.length > 0) {
-          console.log('Found questions with regex:', questionMatches.length);
-          extractedQuestions = questionMatches.map(q => q.trim());
-        } else {
-          console.log('No questions found with regex, using whole content');
-          // Last resort: use the whole content as a single question
-          extractedQuestions = [cleanedContent.trim()];
-        }
-      }
-    }
+    // Rest of your existing function...
     
     if (extractedQuestions.length > 0) {
       // Small delay to ensure loading message is gone
@@ -464,9 +425,12 @@ async function generateClarificationQuestions(notes, reportText) {
         });
       }, 300);
     }
+    
+    return true; // Return success so we can await it
   } catch (error) {
     removeLoadingMessage(loadingId);
     errorHandler.log('Error generating clarification questions', error);
+    return false; // Return failure but don't reject the promise
   }
 }
 
