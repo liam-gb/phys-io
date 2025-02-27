@@ -1154,177 +1154,183 @@ function showDeleteConfirmation(sessionId, sessionName) {
 }
 
 // UI helper functions
-function addMessageToUI(type, content) {
+function addMessageToUI(type, content, options = {}) {
   const messageDiv = document.createElement('div');
-  messageDiv.className = type === 'user' ? 'message user-message' : 
-                         type === 'letter' ? 'message letter-message' : 
-                         type === 'report' ? 'message letter-message' : 
-                         type === 'questions' ? 'message questions-message' :
-                         'message system-message';
   
-  if (type === 'letter') {
-    // Extract thinking content if present
-    const thinkingContent = extractThinking(content);
-    
-    // Look for both thinking tags and "REFERRAL LETTER" marker
-    let letterContent = '';
-    if (content.includes('**REFERRAL LETTER**')) {
-      // Extract content after the referral letter marker if present
-      const parts = content.split('**REFERRAL LETTER**');
-      if (parts.length > 1) {
-        letterContent = parts[1].trim();
-      } else {
-        letterContent = removeThinking(content);
-      }
-    } else {
-      // Default to just removing thinking tags
-      letterContent = removeThinking(content);
-    }
-    
-    // Add thinking message first if present
-    if (thinkingContent) {
-      const thinkingDiv = document.createElement('div');
-      thinkingDiv.className = 'thinking-message';
-      
-      // Format thinking content with markdown-like styling
-      const formattedThinking = thinkingContent
-        .split('\n')
-        .map(line => {
-          if (line.startsWith('-')) {
-            return `<li>${line.substring(1).trim()}</li>`;
-          } else if (line.trim().length > 0) {
-            return `<p>${line}</p>`;
-          } else {
-            return '';
-          }
-        })
-        .join('');
-
-      thinkingDiv.innerHTML = `
-        <div class="thinking-content">
-          <h4>AI Thinking:</h4>
-          <ul>${formattedThinking}</ul>
-        </div>
-      `;
-      
-      conversationHistory.appendChild(thinkingDiv);
-    }
-    
-    messageDiv.innerHTML = `
-      <div class="message-content">${formatReport(letterContent)}</div>
-      <div class="message-timestamp">${formatTimestamp(new Date())}</div>
-      <div class="message-controls">
-        <button class="secondary-button small-button copy-btn">
-          <i class="fa-solid fa-copy"></i> Copy
-        </button>
-        <button class="secondary-button small-button export-btn">
-          <i class="fa-solid fa-file-export"></i> Export
-        </button>
-      </div>
-    `;
-    
-    // Add event listeners for the buttons
-    messageDiv.querySelector('.copy-btn').addEventListener('click', () => {
-      copyReportToClipboard(letterContent);
-    });
-    
-    messageDiv.querySelector('.export-btn').addEventListener('click', () => {
-      exportReport(letterContent);
-    });
-  } else if (type === 'questions') {
-    // Extract thinking content if present
-    const thinkingContent = extractThinking(content);
-    
-    // Remove thinking tags to get just the questions
-    const questionsContent = removeThinking(content);
-    
-    // Add thinking message first if present
-    if (thinkingContent) {
-      const thinkingDiv = document.createElement('div');
-      thinkingDiv.className = 'thinking-message';
-      
-      // Format thinking content with markdown-like styling
-      const formattedThinking = thinkingContent
-        .split('\n')
-        .map(line => {
-          if (line.startsWith('-')) {
-            return `<li>${line.substring(1).trim()}</li>`;
-          } else if (line.trim().length > 0) {
-            return `<p>${line}</p>`;
-          } else {
-            return '';
-          }
-        })
-        .join('');
-
-      thinkingDiv.innerHTML = `
-        <div class="thinking-content">
-          <h4>AI Thinking:</h4>
-          <ul>${formattedThinking}</ul>
-        </div>
-      `;
-      
-      conversationHistory.appendChild(thinkingDiv);
-    }
-    
-    // Process questions - extract numbered items
-    const questionLines = questionsContent.split('\n')
-      .filter(line => /^\d+\./.test(line.trim()))
-      .map(line => `<li>${line.replace(/^\d+\./, '').trim().replace(/^["']|["']$/g, '')}</li>`)
-      .join('');
-    
-    // Create HTML for questions
-    const questionsHTML = `
-      <div class="clarification-questions">
-        <h4>Clarification Questions:</h4>
-        <ul>
-          ${questionLines}
-        </ul>
-        <div class="clarification-actions">
-          <button class="secondary-button small-button answer-questions-btn" style="background-color: #f0ebff; color: #6B3FA0; border-color: #d4c6ff;">
-            <i class="fa-solid fa-reply"></i> Answer Questions
-          </button>
-        </div>
-      </div>
-    `;
-    
-    messageDiv.innerHTML = `
-      <div class="message-content">${questionsHTML}</div>
-      <div class="message-timestamp">${formatTimestamp(new Date())}</div>
-    `;
-    
-    // Add event listener for the answer button
-    const answerBtn = messageDiv.querySelector('.answer-questions-btn');
-    if (answerBtn) {
-      const questions = [];
-      const questionItems = messageDiv.querySelectorAll('.clarification-questions li');
-      questionItems.forEach(item => {
-        questions.push(item.textContent.trim());
-      });
-      
-      answerBtn.addEventListener('click', () => {
-        showAnswerQuestionsDialog(questions);
-      });
-    }
-  } else {
-    messageDiv.innerHTML = `
-      <div class="message-content">${content.replace(/\n/g, '<br>')}</div>
-      <div class="message-timestamp">${formatTimestamp(new Date())}</div>
-    `;
+  // determine appropriate message class
+  const messageClasses = {
+    user: 'message user-message',
+    letter: 'message letter-message',
+    report: 'message letter-message',
+    questions: 'message questions-message',
+    system: 'message system-message',
+    thinking: 'thinking-message'
+  };
+  
+  messageDiv.className = messageClasses[type] || 'message system-message';
+  
+  // render based on type
+  switch(type) {
+    case 'letter':
+    case 'report':
+      renderLetterMessage(messageDiv, content, options);
+      break;
+    case 'questions':
+      renderQuestionsMessage(messageDiv, content, options);
+      break;
+    case 'thinking':
+      renderThinkingMessage(messageDiv, content, options);
+      break;
+    default:
+      // basic message (user, system, etc)
+      renderBasicMessage(messageDiv, content, options);
   }
   
   conversationHistory.appendChild(messageDiv);
   scrollToBottom();
+  
+  return messageDiv;
+}
+
+// helper renderers
+function renderLetterMessage(element, content, options = {}) {
+  // Extract thinking content if present
+  const thinkingContent = extractThinking(content);
+  
+  // Look for both thinking tags and "REFERRAL LETTER" marker
+  let letterContent = '';
+  if (content.includes('**REFERRAL LETTER**')) {
+    // Extract content after the referral letter marker if present
+    const parts = content.split('**REFERRAL LETTER**');
+    if (parts.length > 1) {
+      letterContent = parts[1].trim();
+    } else {
+      letterContent = removeThinking(content);
+    }
+  } else {
+    // Default to just removing thinking tags
+    letterContent = removeThinking(content);
+  }
+  
+  // Add thinking message first if present
+  if (thinkingContent) {
+    const thinkingDiv = document.createElement('div');
+    thinkingDiv.className = 'thinking-message';
+    renderThinkingMessage(thinkingDiv, thinkingContent);
+    conversationHistory.appendChild(thinkingDiv);
+  }
+  
+  element.innerHTML = `
+    <div class="message-content">${formatReport(letterContent)}</div>
+    <div class="message-timestamp">${formatTimestamp(new Date())}</div>
+    <div class="message-controls">
+      <button class="secondary-button small-button copy-btn">
+        <i class="fa-solid fa-copy"></i> Copy
+      </button>
+      <button class="secondary-button small-button export-btn">
+        <i class="fa-solid fa-file-export"></i> Export
+      </button>
+    </div>
+  `;
+  
+  // Add event listeners for the buttons
+  element.querySelector('.copy-btn').addEventListener('click', () => {
+    copyReportToClipboard(letterContent);
+  });
+  
+  element.querySelector('.export-btn').addEventListener('click', () => {
+    exportReport(letterContent);
+  });
+}
+
+function renderQuestionsMessage(element, content, options = {}) {
+  // Extract thinking content if present
+  const thinkingContent = extractThinking(content);
+  
+  // Remove thinking tags to get just the questions
+  const questionsContent = removeThinking(content);
+  
+  // Add thinking message first if present
+  if (thinkingContent) {
+    const thinkingDiv = document.createElement('div');
+    thinkingDiv.className = 'thinking-message';
+    renderThinkingMessage(thinkingDiv, thinkingContent);
+    conversationHistory.appendChild(thinkingDiv);
+  }
+  
+  // Process questions - extract numbered items
+  const questionLines = questionsContent.split('\n')
+    .filter(line => /^\d+\./.test(line.trim()))
+    .map(line => `<li>${line.replace(/^\d+\./, '').trim().replace(/^["']|["']$/g, '')}</li>`)
+    .join('');
+  
+  // Create HTML for questions
+  const questionsHTML = `
+    <div class="clarification-questions">
+      <h4>Clarification Questions:</h4>
+      <ul>
+        ${questionLines}
+      </ul>
+      <div class="clarification-actions">
+        <button class="secondary-button small-button answer-questions-btn" style="background-color: #f0ebff; color: #6B3FA0; border-color: #d4c6ff;">
+          <i class="fa-solid fa-reply"></i> Answer Questions
+        </button>
+      </div>
+    </div>
+  `;
+  
+  element.innerHTML = `
+    <div class="message-content">${questionsHTML}</div>
+    <div class="message-timestamp">${formatTimestamp(new Date())}</div>
+  `;
+  
+  // Add event listener for the answer button
+  const answerBtn = element.querySelector('.answer-questions-btn');
+  if (answerBtn) {
+    const questions = [];
+    const questionItems = element.querySelectorAll('.clarification-questions li');
+    questionItems.forEach(item => {
+      questions.push(item.textContent.trim());
+    });
+    
+    answerBtn.addEventListener('click', () => {
+      showAnswerQuestionsDialog(questions);
+    });
+  }
+}
+
+function renderThinkingMessage(element, content) {
+  // Format thinking content with markdown-like styling
+  const formattedThinking = content
+    .split('\n')
+    .map(line => {
+      if (line.startsWith('-')) {
+        return `<li>${line.substring(1).trim()}</li>`;
+      } else if (line.trim().length > 0) {
+        return `<p>${line}</p>`;
+      } else {
+        return '';
+      }
+    })
+    .join('');
+
+  element.innerHTML = `
+    <div class="thinking-content">
+      <h4>AI Thinking:</h4>
+      <ul>${formattedThinking}</ul>
+    </div>
+  `;
+}
+
+function renderBasicMessage(element, content, options = {}) {
+  element.innerHTML = `
+    <div class="message-content">${content.replace(/\n/g, '<br>')}</div>
+    <div class="message-timestamp">${formatTimestamp(new Date())}</div>
+  `;
 }
 
 function addSystemMessage(content) {
-  const messageDiv = document.createElement('div');
-  messageDiv.className = 'message system-message';
-  messageDiv.innerHTML = `
-    <div class="message-content">${content}</div>
-  `;
-  
-  conversationHistory.appendChild(messageDiv);
+  const messageDiv = addMessageToUI('system', content);
   
   // Add to session messages
   currentSession.messages.push({
@@ -1332,8 +1338,6 @@ function addSystemMessage(content) {
     content: content,
     timestamp: new Date().toISOString()
   });
-  
-  scrollToBottom();
 }
 
 // Array of fun verbs to randomly cycle through for loading messages
@@ -1402,20 +1406,30 @@ async function addLoadingMessage(stage = 'letter') {
   // Check model compatibility for custom loading message
   const compatibility = await evaluateModelCompatibility(currentSession.model);
   
-  let loadingMessage = '';
+  // Determine appropriate loading message based on stage
+  const messagesByStage = {
+    letter: `${currentVerb} the letter for you...`,
+    report: `${currentVerb} the letter for you...`,
+    clarification: `${currentVerb} my questions for you...`,
+    response: `${currentVerb} response...`
+  };
   
-  if (stage === 'letter') {
-    loadingMessage = `${currentVerb} letter for you...`;
-  } else if (stage === 'report') {
-    loadingMessage = `${currentVerb} letter for you...`;
-  } else if (stage === 'clarification') {
-    loadingMessage = `${currentVerb} my questions for you...`;
-  } else if (stage === 'response') {
-    loadingMessage = `${currentVerb} response...`;
-  }
+  const loadingMessage = messagesByStage[stage] || `${currentVerb}...`;
   
-  // For all models, show tea message with animated SVG
-  loadingDiv.innerHTML = `
+  // Create the loading tea animation
+  loadingDiv.innerHTML = renderLoadingTeaAnimation(loadingMessage, compatibility);
+  
+  conversationHistory.appendChild(loadingDiv);
+  scrollToBottom();
+  
+  // Start cycling through verbs
+  startVerbCycling(loadingDiv);
+  
+  return loadingId;
+}
+
+function renderLoadingTeaAnimation(message, compatibility) {
+  return `
     <div class="loading-tea">
       <div class="tea-animation">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="80" height="80">
@@ -1447,18 +1461,10 @@ async function addLoadingMessage(stage = 'letter') {
           </g>
         </svg>
       </div>
-      <p>${loadingMessage}</p>
+      <p>${message}</p>
       ${compatibility.comfortLevel !== 'Easy' ? '<p class="tea-reminder">This could take a few minutes.<br>Plenty of time for tea.</p>' : ''}
     </div>
   `;
-  
-  conversationHistory.appendChild(loadingDiv);
-  scrollToBottom();
-  
-  // Start cycling through verbs
-  startVerbCycling(loadingDiv);
-  
-  return loadingId;
 }
 
 function removeLoadingMessage(id) {
@@ -1508,6 +1514,8 @@ function addErrorMessage(errorText) {
   
   conversationHistory.appendChild(errorDiv);
   scrollToBottom();
+  
+  return errorDiv;
 }
 
 function scrollToBottom() {
