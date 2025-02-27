@@ -225,7 +225,7 @@ async function loadModels() {
         const option = document.createElement('option');
         option.value = name;
         
-        // Build a more descriptive label with status included
+        // Build a label with status included
         let statusEmoji = '';
         if (compatibility.comfortLevel === 'Easy') {
           statusEmoji = ' ✓';
@@ -1163,9 +1163,55 @@ function addMessageToUI(type, content) {
                          'message system-message';
   
   if (type === 'letter') {
-    // Use the full content without separating thinking
+    // Extract thinking content if present
+    const thinkingContent = extractThinking(content);
+    
+    // Look for both thinking tags and "REFERRAL LETTER" marker
+    let letterContent = '';
+    if (content.includes('**REFERRAL LETTER**')) {
+      // Extract content after the referral letter marker if present
+      const parts = content.split('**REFERRAL LETTER**');
+      if (parts.length > 1) {
+        letterContent = parts[1].trim();
+      } else {
+        letterContent = removeThinking(content);
+      }
+    } else {
+      // Default to just removing thinking tags
+      letterContent = removeThinking(content);
+    }
+    
+    // Add thinking message first if present
+    if (thinkingContent) {
+      const thinkingDiv = document.createElement('div');
+      thinkingDiv.className = 'thinking-message';
+      
+      // Format thinking content with markdown-like styling
+      const formattedThinking = thinkingContent
+        .split('\n')
+        .map(line => {
+          if (line.startsWith('-')) {
+            return `<li>${line.substring(1).trim()}</li>`;
+          } else if (line.trim().length > 0) {
+            return `<p>${line}</p>`;
+          } else {
+            return '';
+          }
+        })
+        .join('');
+
+      thinkingDiv.innerHTML = `
+        <div class="thinking-content">
+          <h4>AI Thinking:</h4>
+          <ul>${formattedThinking}</ul>
+        </div>
+      `;
+      
+      conversationHistory.appendChild(thinkingDiv);
+    }
+    
     messageDiv.innerHTML = `
-      <div class="message-content">${formatReport(content)}</div>
+      <div class="message-content">${formatReport(letterContent)}</div>
       <div class="message-timestamp">${formatTimestamp(new Date())}</div>
       <div class="message-controls">
         <button class="secondary-button small-button copy-btn">
@@ -1179,11 +1225,11 @@ function addMessageToUI(type, content) {
     
     // Add event listeners for the buttons
     messageDiv.querySelector('.copy-btn').addEventListener('click', () => {
-      copyReportToClipboard(content);
+      copyReportToClipboard(letterContent);
     });
     
     messageDiv.querySelector('.export-btn').addEventListener('click', () => {
-      exportReport(content);
+      exportReport(letterContent);
     });
   } else if (type === 'questions') {
     // Extract thinking content if present
@@ -1298,7 +1344,7 @@ const funVerbs = [
   'Fabricating', 'Minting', 'Sculpting', 'Orchestrating', 'Incubating', 'Summoning', 
   'Unearthing', 'Unravelling', 'Churning', 'Distilling', 'Kindling', 'Birthing', 
   'Rigging', 'Flumoxing', 'Cockamamying', 'Wonkifying', 'Cobbling-together', 
-  'Hamfisting', 'Faffing-about', 'Paddling-through', 'Wizarding', 'Speedrunning', 
+  'Hamfisting', 'Faffing-about with', 'Paddling-through', 'Wizarding', 'Speedrunning', 
   'Shredding', 'Turbocharging', 'Mobilising'
 ];
 
@@ -1328,9 +1374,9 @@ function startVerbCycling(loadingElement) {
         const messageElement = loadingElement.querySelector('.loading-tea p');
         const originalMessage = messageElement.textContent;
         if (originalMessage.includes('letter')) {
-          messageElement.textContent = `${currentVerb} letter for you...`;
+          messageElement.textContent = `${currentVerb} the letter for you...`;
         } else if (originalMessage.includes('report')) {
-          messageElement.textContent = `${currentVerb} letter for you...`;
+          messageElement.textContent = `${currentVerb} the letter for you...`;
         } else if (originalMessage.includes('questions')) {
           messageElement.textContent = `${currentVerb} my questions for you...`;
         }
@@ -1339,7 +1385,7 @@ function startVerbCycling(loadingElement) {
       } else if (loadingElement.textContent.includes('questions')) {
         loadingElement.textContent = `${currentVerb} my questions for you...`;
       } else {
-        loadingElement.textContent = `${currentVerb} letter for you...`;
+        loadingElement.textContent = `${currentVerb} the letter for you...`;
       }
     }
   }, 60000); // 60 seconds
