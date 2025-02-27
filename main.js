@@ -175,9 +175,6 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.setTitle('Phys.IO');
   
-  // Only open DevTools in development
-  // Always open DevTools during debugging
-  mainWindow.webContents.openDevTools();
 }
 
 // Initialize the SessionManager

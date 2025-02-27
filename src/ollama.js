@@ -337,20 +337,16 @@ Provide 2-4 clarification questions that would help improve this report:
     let modelSizeInB = null;
     const lowerModelName = modelName.toLowerCase();
     const modelSizes = this.modelSizeDefinitions;
-    
-    console.log(`Estimating size for model: ${modelName}`);
-    
+        
     // Special case handling for llama3.2 70b
     if ((lowerModelName.includes('llama3.2') || lowerModelName.includes('llama3:2')) && 
         lowerModelName.includes('70b')) {
-      console.log('Matched special case: llama3.2 70b -> 70B');
       return 70;
     }
     
     // Check special cases first
     for (const [specialCase, size] of Object.entries(modelSizes.specialCases)) {
       if (lowerModelName.includes(specialCase.toLowerCase())) {
-        console.log(`Matched special case: ${specialCase} -> ${size}B`);
         return size;
       }
     }
@@ -363,14 +359,12 @@ Provide 2-4 clarification questions that would help improve this report:
     
     if (sizeMatch && sizeMatch[1]) {
       modelSizeInB = parseFloat(sizeMatch[1]);
-      console.log(`Extracted parameter count via regex: ${modelSizeInB}B`);
       return modelSizeInB;
     }
     
     // Check specific models
     for (const [model, size] of Object.entries(modelSizes.specificModels)) {
       if (lowerModelName.includes(model.toLowerCase())) {
-        console.log(`Matched specific model: ${model} -> ${size}B`);
         return size;
       }
     }
@@ -378,7 +372,6 @@ Provide 2-4 clarification questions that would help improve this report:
     // Add specific check for deepseek-r1 variants
     if (lowerModelName.includes('deepseek-r1') || 
         lowerModelName.includes('deepseek:r1')) {
-      console.log('Matched deepseek-r1 variant -> 8B');
       return 8;
     }
     
