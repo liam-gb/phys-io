@@ -1260,171 +1260,145 @@ function addSystemMessage(content) {
   });
 }
 
-// Array of fun verbs to randomly cycle through for loading messages
-const funVerbs = [
-  'Generating', 'Discombobulating', 'Kerfuffling', 'Noodling', 'Hatching', 'Brewing', 
-  'Fashioning', 'Weaving', 'Cobbling', 'Wrangling', 'Spooling', 'Smithing', 
-  'Manifesting', 'Cultivating', 'Harvesting', 'Spinning', 'Crafting', 'Assembling', 
-  'Fabricating', 'Minting', 'Sculpting', 'Orchestrating', 'Incubating', 'Summoning', 
-  'Unearthing', 'Unravelling', 'Churning', 'Distilling', 'Kindling', 'Birthing', 
-  'Rigging', 'Flumoxing', 'Cockamamying', 'Wonkifying', 'Cobbling-together', 
-  'Hamfisting', 'Faffing-about with', 'Paddling-through', 'Wizarding', 'Speedrunning', 
-  'Shredding', 'Turbocharging', 'Mobilising'
-];
-
-let currentVerb = 'Generating';
-let verbChangeTimer = null;
-
-// Function to cycle through verbs randomly
-function startVerbCycling(loadingElement) {
-  // Clear any existing timer
-  if (verbChangeTimer) {
-    clearInterval(verbChangeTimer);
+class LoadingManager {
+  constructor() {
+    this.verbList = [
+      'Generating', 'Discombobulating', 'Kerfuffling', 'Noodling', 'Hatching', 'Brewing', 
+      'Fashioning', 'Weaving', 'Cobbling', 'Wrangling', 'Spooling', 'Smithing', 
+      'Manifesting', 'Cultivating', 'Harvesting', 'Spinning', 'Crafting', 'Assembling', 
+      'Fabricating', 'Minting', 'Sculpting', 'Orchestrating', 'Incubating', 'Summoning', 
+      'Unearthing', 'Unravelling', 'Churning', 'Distilling', 'Kindling', 'Birthing', 
+      'Rigging', 'Flumoxing', 'Cockamamying', 'Wonkifying', 'Cobbling-together', 
+      'Hamfisting', 'Faffing-about with', 'Paddling-through', 'Wizarding', 'Speedrunning', 
+      'Shredding', 'Turbocharging', 'Mobilising'
+    ];
+    this.activeLoaders = new Map();
   }
   
-  // Set initial verb
-  currentVerb = funVerbs[0];
-  
-  // Start cycling randomly every 60 seconds
-  verbChangeTimer = setInterval(() => {
-    // Get random verb from the array, excluding the current one
-    const filteredVerbs = funVerbs.filter(verb => verb !== currentVerb);
-    const randomIndex = Math.floor(Math.random() * filteredVerbs.length);
-    currentVerb = filteredVerbs[randomIndex];
+  addLoader(stage = 'letter') {
+    const loadingId = 'loading-' + Date.now();
+    const verb = this.verbList[Math.floor(Math.random() * this.verbList.length)];
+    const loadingDiv = this.createLoader(loadingId, verb, stage);
     
-    // Update the loading message if it exists
-    if (loadingElement && document.body.contains(loadingElement)) {
-      if (loadingElement.querySelector('.loading-tea p')) {
-        const messageElement = loadingElement.querySelector('.loading-tea p');
-        const originalMessage = messageElement.textContent;
-        if (originalMessage.includes('letter')) {
-          messageElement.textContent = `${currentVerb} the letter for you...`;
-        } else if (originalMessage.includes('report')) {
-          messageElement.textContent = `${currentVerb} the letter for you...`;
-        } else if (originalMessage.includes('questions')) {
-          messageElement.textContent = `${currentVerb} my questions for you...`;
-        }
-      } else if (loadingElement.textContent.includes('response')) {
-        loadingElement.textContent = `${currentVerb} response...`;
-      } else if (loadingElement.textContent.includes('questions')) {
-        loadingElement.textContent = `${currentVerb} my questions for you...`;
-      } else {
-        loadingElement.textContent = `${currentVerb} the letter for you...`;
-      }
+    conversationHistory.appendChild(loadingDiv);
+    scrollToBottom();
+    
+    // Cycle verbs periodically
+    const intervalId = this.startVerbCycling(loadingDiv, stage);
+    this.activeLoaders.set(loadingId, intervalId);
+    
+    return loadingId;
+  }
+  
+  removeLoader(id) {
+    const element = document.getElementById(id);
+    const intervalId = this.activeLoaders.get(id);
+    
+    if (intervalId) {
+      clearInterval(intervalId);
+      this.activeLoaders.delete(id);
     }
-  }, 60000); // 60 seconds
+    
+    if (element) {
+      element.classList.add('removing');
+      element.style.opacity = '0';
+      
+      setTimeout(() => {
+        if (document.body.contains(element)) {
+          element.remove();
+        }
+        
+        // Check for any orphaned loading messages
+        document.querySelectorAll('.loading').forEach(msg => {
+          if (!msg.id || msg.id !== id) {
+            console.log('Removing orphaned loading message');
+            msg.remove();
+          }
+        });
+      }, 300);
+    } else {
+      // Fallback cleanup if element not found
+      console.log('Loading element not found, checking for any loading messages');
+      document.querySelectorAll('.loading').forEach(msg => {
+        msg.remove();
+      });
+    }
+  }
   
-  return verbChangeTimer;
-}
-
-async function addLoadingMessage(stage = 'letter') {
-  const loadingId = 'loading-' + Date.now();
-  const loadingDiv = document.createElement('div');
-  loadingDiv.className = 'message system-message loading';
-  loadingDiv.id = loadingId;
+  createLoader(id, verb, stage) {
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'message system-message loading';
+    loadingDiv.id = id;
+    
+    let message = '';
+    switch (stage) {
+      case 'letter':
+      case 'report':
+        message = `${verb} the letter for you...`;
+        break;
+      case 'clarification':
+        message = `${verb} my questions for you...`;
+        break;
+      case 'response':
+        message = `${verb} response...`;
+        break;
+      default:
+        message = `${verb}...`;
+    }
+    
+    loadingDiv.innerHTML = this.renderLoadingAnimation(message);
+    return loadingDiv;
+  }
   
-  // Check model compatibility for custom loading message
-  const compatibility = await evaluateModelCompatibility(currentSession.model);
+  startVerbCycling(loadingElement, stage) {
+    return setInterval(() => {
+      if (loadingElement && document.body.contains(loadingElement)) {
+        const newVerb = this.verbList[Math.floor(Math.random() * this.verbList.length)];
+        const messageElement = loadingElement.querySelector('.loading-tea p');
+        
+        if (messageElement) {
+          let message = '';
+          switch (stage) {
+            case 'letter':
+            case 'report':
+              message = `${newVerb} the letter for you...`;
+              break;
+            case 'clarification':
+              message = `${newVerb} my questions for you...`;
+              break;
+            case 'response':
+              message = `${newVerb} response...`;
+              break;
+            default:
+              message = `${newVerb}...`;
+          }
+          messageElement.textContent = message;
+        }
+      }
+    }, 60000); // Change every 60 seconds
+  }
   
-  // Determine appropriate loading message based on stage
-  const messagesByStage = {
-    letter: `${currentVerb} the letter for you...`,
-    report: `${currentVerb} the letter for you...`,
-    clarification: `${currentVerb} my questions for you...`,
-    response: `${currentVerb} response...`
-  };
-  
-  const loadingMessage = messagesByStage[stage] || `${currentVerb}...`;
-  
-  // Create the loading tea animation
-  loadingDiv.innerHTML = renderLoadingTeaAnimation(loadingMessage, compatibility);
-  
-  conversationHistory.appendChild(loadingDiv);
-  scrollToBottom();
-  
-  // Start cycling through verbs
-  startVerbCycling(loadingDiv);
-  
-  return loadingId;
-}
-
-function renderLoadingTeaAnimation(message, compatibility) {
-  return `
-    <div class="loading-tea">
-      <div class="tea-animation">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="80" height="80">
-          <!-- Tea cup -->
-          <g>
-            <path d="M20,40 L80,40 L70,80 L30,80 Z" fill="#fff" stroke="#333" stroke-width="2"/>
-            <path d="M25,40 L75,40 L67,75 L33,75 Z" fill="#f9d5ba" stroke="none">
-              <animate attributeName="fill" values="#f9d5ba;#d4a76a;#f9d5ba" dur="3s" repeatCount="indefinite" />
-            </path>
-            
-            <!-- Tea handle -->
-            <path d="M78,50 Q90,50 90,60 Q90,70 80,70" fill="none" stroke="#333" stroke-width="2"/>
-            
-            <!-- S-shaped Steam animation -->
-            <path d="M50,10 C57,15 43,25 50,30" fill="none" stroke="#aaa" stroke-width="2" opacity="0.7">
-              <animate attributeName="d" values="M50,10 C57,15 43,25 50,30;M50,5 C57,10 43,20 50,25;M50,10 C57,15 43,25 50,30" dur="3s" repeatCount="indefinite" />
-              <animate attributeName="opacity" values="0.7;0.3;0.7" dur="3s" repeatCount="indefinite" />
-            </path>
-            
-            <path d="M40,15 C45,20 35,25 40,30" fill="none" stroke="#aaa" stroke-width="1.5" opacity="0.5">
-              <animate attributeName="d" values="M40,15 C45,20 35,25 40,30;M40,10 C45,15 35,20 40,25;M40,15 C45,20 35,25 40,30" dur="2.5s" repeatCount="indefinite" />
-              <animate attributeName="opacity" values="0.5;0.2;0.5" dur="2.5s" repeatCount="indefinite" />
-            </path>
-            
-            <path d="M60,15 C65,20 55,25 60,30" fill="none" stroke="#aaa" stroke-width="1.5" opacity="0.5">
-              <animate attributeName="d" values="M60,15 C65,20 55,25 60,30;M60,10 C65,15 55,20 60,25;M60,15 C65,20 55,25 60,30" dur="2.8s" repeatCount="indefinite" />
-              <animate attributeName="opacity" values="0.5;0.2;0.5" dur="2.8s" repeatCount="indefinite" />
-            </path>
-          </g>
-        </svg>
+  renderLoadingAnimation(message) {
+    return `
+      <div class="loading-tea">
+        <div class="tea-animation">
+          <img src="../assets/tea-animation.svg" width="80" height="80" alt="Loading animation" />
+        </div>
+        <p>${message}</p>
       </div>
-      <p>${message}</p>
-      ${compatibility.comfortLevel !== 'Easy' ? '<p class="tea-reminder">This could take a few minutes.<br>Plenty of time for tea.</p>' : ''}
-    </div>
-  `;
+    `;
+  }
+}
+
+// Create a single instance
+const loadingManager = new LoadingManager();
+
+function addLoadingMessage(stage = 'letter') {
+  return loadingManager.addLoader(stage);
 }
 
 function removeLoadingMessage(id) {
-  const loadingElement = document.getElementById(id);
-  
-  // Stop the verb cycling timer
-  if (verbChangeTimer) {
-    clearInterval(verbChangeTimer);
-    verbChangeTimer = null;
-  }
-  
-  if (loadingElement) {
-    // Mark it for removal and fade it out
-    loadingElement.classList.add('removing');
-    loadingElement.style.opacity = '0';
-    
-    // Actually remove it after a short delay to allow the fade effect
-    setTimeout(() => {
-      if (document.body.contains(loadingElement)) {
-        loadingElement.remove();
-      }
-      
-      // Check for any orphaned loading messages and remove them
-      const loadingMessages = document.querySelectorAll('.loading');
-      loadingMessages.forEach(msg => {
-        if (!msg.id || msg.id !== id) {
-          console.log('Removing orphaned loading message');
-          msg.remove();
-        }
-      });
-    }, 300);
-  } else {
-    // If we can't find the specific loading element by ID, 
-    // remove any loading messages that might be present
-    console.log('Loading element not found, checking for any loading messages');
-    const loadingMessages = document.querySelectorAll('.loading');
-    loadingMessages.forEach(msg => {
-      msg.remove();
-    });
-  }
+  loadingManager.removeLoader(id);
 }
 
 function addErrorMessage(errorText) {
