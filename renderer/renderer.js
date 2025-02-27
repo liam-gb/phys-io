@@ -1768,19 +1768,6 @@ userInput.addEventListener('input', () => {
   sendBtn.disabled = userInput.value.trim() === '';
 });
 
-// Info modal event listeners
-infoBtn.addEventListener('click', () => showInfoModal('intro'));
-closeInfoModalBtn.addEventListener('click', hideInfoModal);
-introTab.addEventListener('click', () => showInfoModal('intro'));
-disclaimerTab.addEventListener('click', () => showInfoModal('disclaimer'));
-
-// Close modal when clicking outside
-infoModal.addEventListener('click', (e) => {
-  if (e.target === infoModal) {
-    hideInfoModal();
-  }
-});
-
 userInput.addEventListener('keydown', (e) => {
   // Send on Ctrl+Enter or Command+Enter
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
