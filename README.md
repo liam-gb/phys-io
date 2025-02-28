@@ -80,14 +80,6 @@ npm install
 npm start
 ```
 
-## How It Works
-
-1. Enter notes from a physiotherapy session into the app
-2. Phys.IO converts them to a professional letter
-3. AI identifies missing information and asks clarifying questions
-4. Answer the questions to improve the output
-5. Export the final letter as needed
-
 ## Process Flow
 
 ![Phys.IO Process Flow](./docs/process-flow.png)
