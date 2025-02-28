@@ -13,7 +13,8 @@ try:
     from utils import setup_logging, load_config, save_json, ensure_dir, display_config, confirm_run
 except ImportError:
     # When run from project root
-    from test.utils import setup_logging, load_config, save_json, ensure_dir, display_config, confirm_run
+    from tests.evaluation.utils import setup_logging, load_config, save_json, ensure_dir, display_config, confirm_run
+
 
 # Set up logging
 logger = setup_logging("pipeline.log")

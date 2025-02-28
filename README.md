@@ -105,21 +105,6 @@ The primary prompt was evolved through 3 versions (v1-v3), iteratively refined u
 
 Note: Primarily tested on deepseek-r1:8b.
 
-## Privacy & Security
-
-- All data processing happens locally on your device
-- No data is sent to external servers
-
-## Development Status
-
-This is a prototype. Not for clinical use without proper review.
-
-## todo
-
-- [ ] add proper unit tests
-- [ ] implement endpoint validation to enforce local-only processing
-- [ ] conduct usability testing with physios
-
 ## License
 
 [MIT](./LICENSE)
